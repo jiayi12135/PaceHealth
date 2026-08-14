@@ -11,8 +11,9 @@ AI功能的路由,单独拆出来是为了方便backend队友直接把它"插"�
 
 from fastapi import APIRouter, HTTPException
 
-from app.models import GeneratePlanRequest, WorkoutPlan
-from app.claude_client import generate_workout_plan
+from app.models import ChatRequest, ChatResponse, GeneratePlanRequest, ReportRequest, ReportResponse, WorkoutPlan
+from app.claude_client import generate_chat_reply, generate_report_summary, generate_workout_plan
+from app.report_calculator import calculate_report_stats
 
 router = APIRouter(tags=["AI"])
 
@@ -29,3 +30,48 @@ def generate_plan(request: GeneratePlanRequest):
         return plan
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"生成计划失败: {str(e)}")
+
+
+@router.post("/chat", response_model=ChatResponse)
+def chat(request: ChatRequest):
+    """
+    聊天接口。backend每次调用时需要把这个用户之前的聊天记录(history)一起传过来,
+    因为这个AI服务本身不存数据、不记得之前聊过什么,是backend负责存Chat Record表、
+    并且每次都把历史记录带上,AI才能有上下文接着聊。
+    """
+    try:
+        reply = generate_chat_reply(
+            message=request.message,
+            history=request.history,
+            profile=request.profile,
+            personal_info=request.personalInfo,
+        )
+        return ChatResponse(reply=reply)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"聊天回复失败: {str(e)}")
+
+
+@router.post("/report", response_model=ReportResponse)
+def generate_report(request: ReportRequest):
+    """
+    周报/月报接口。backend需要先从数据库把这个用户在对应周期(本周/本月)内的
+    体重记录查出来,按recordedAt从早到晚排序,传进weightRecords。
+    数字(体重变化、目标进度、预计周数)由这个服务用代码算,AI只负责写总结文字。
+    """
+    try:
+        stats = calculate_report_stats(request.weightRecords, request.profile)
+        summary = generate_report_summary(stats, request.profile, request.periodType)
+
+        return ReportResponse(
+            periodType=request.periodType,
+            hasEnoughData=stats.has_enough_data,
+            startWeightKg=stats.start_weight_kg,
+            endWeightKg=stats.end_weight_kg,
+            deltaKg=stats.delta_kg,
+            progressToGoalPercent=stats.progress_to_goal_percent,
+            projectedWeeksToGoal=stats.projected_weeks_to_goal,
+            summary=summary,
+            weightRecords=request.weightRecords,
+        )
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"生成报告失败: {str(e)}")

@@ -9,10 +9,13 @@ Prompt 设计。
    多输出废话、或者JSON格式错误导致backend解析失败。
 """
 
+from typing import Optional
+
 from app.models import Profile, UserPersonalInfo
+from app.report_calculator import ReportStats
 
 
-SYSTEM_PROMPT = """你是PaceHealth App里的专业健身教练AI,负责根据用户的身体状况、目标和限制,生成个性化的每周训练计划。
+PLAN_SYSTEM_PROMPT = """你是PaceHealth App里的专业健身教练AI,负责根据用户的身体状况、目标和限制,生成个性化的每周训练计划。
 
 核心原则:
 1. 安全第一。用户列出的受伤部位、术后限制、体态问题、要避免的动作,必须严格遵守,绝对不能推荐会加重这些问题的动作。如果不确定某个动作是否安全,选择更保守的替代动作。
@@ -58,4 +61,77 @@ def build_user_message(profile: Profile, personal_info: UserPersonalInfo) -> str
 需要避免的动作: {avoid}
 
 请生成一份完整的每周训练计划,按照 {profile.exerciseFrequencyPerWeek} 次/周安排具体训练日,每天包含若干个具体动作,并为每个动作给出组数、次数或时长、休息时间,以及针对这个用户的推荐理由。这份计划是给用户每周重复使用的模板,不要在名称或内容中提及具体的周数。
+"""
+
+
+# ---------- 聊天功能的 prompt ----------
+
+CHAT_SYSTEM_PROMPT = """你是PaceHealth App里的健身助手AI,负责在聊天框里回答用户的健身相关问题,并在用户想调整训练计划时给出建议。
+
+核心原则:
+1. 只回答健身、运动、营养、身体恢复相关的问题。如果用户问的完全无关(比如写代码、聊八卦),礼貌地说明你是健身助手,把话题带回健身相关内容,不要跑题回答。
+2. 如果对话上下文里提供了用户的身体状况信息(伤病、体态问题、手术史等),回答和建议必须考虑这些限制,不能推荐会加重这些问题的动作,原则和生成计划时完全一致。
+3. 如果用户表达想要调整/更换计划里的某个动作或整体安排,你可以在聊天里给出具体建议(比如换成什么动作、为什么换),但要明确告诉用户:需要点击"重新生成计划"或类似按钮,系统才会正式更新他的计划,你现在只是给建议,不会自动帮他改掉数据库里的计划。
+4. 回答要简洁,口语化,像一个懂行、有耐心的朋友在聊天,不要写成长篇大论的文章。一般2-5句话为宜,除非用户明确要求详细解释。
+5. 你不是医生。遇到明显超出健身范畴的健康问题(比如剧烈疼痛、疑似受伤当下),建议用户去看医生或物理治疗师,不要给出诊断或治疗建议。
+"""
+
+
+def build_chat_system_context(profile: Optional[Profile], personal_info: Optional[UserPersonalInfo]) -> str:
+    """如果有用户资料,拼一段背景信息附加在system prompt后面,让AI回答时知道这个用户的情况"""
+
+    if profile is None and personal_info is None:
+        return CHAT_SYSTEM_PROMPT + "\n（当前对话没有提供该用户的身体状况信息,如果用户问的问题跟他个人情况相关,可以直接询问他的目标、伤病等信息再给建议。）"
+
+    lines = ["\n【这位用户的背景信息,回答时请纳入考虑】"]
+    if profile:
+        lines.append(f"目标: {profile.goal}, 每周运动频率: {profile.exerciseFrequencyPerWeek}次, 运动地点: {profile.exerciseLocation}")
+    if personal_info:
+        if personal_info.injuries:
+            lines.append(f"受伤部位/病史: {', '.join(personal_info.injuries)}")
+        if personal_info.postureIssues:
+            lines.append(f"体态问题: {', '.join(personal_info.postureIssues)}")
+        if personal_info.surgeryHistory:
+            lines.append(f"手术史: {', '.join(personal_info.surgeryHistory)}")
+        if personal_info.exercisesToAvoid:
+            lines.append(f"需要避免的动作: {', '.join(personal_info.exercisesToAvoid)}")
+
+    return CHAT_SYSTEM_PROMPT + "\n".join(lines)
+
+
+# ---------- 周报/月报功能的 prompt ----------
+
+REPORT_SYSTEM_PROMPT = """你是PaceHealth App里的健身助手AI,负责根据已经算好的体重数据,写一段周报/月报的总结文字。
+
+核心原则:
+1. 下面给你的所有数字(体重变化、目标进度百分比、预计还需几周)都已经用代码精确计算过,你只需要读懂这些数字、用自然语言解释清楚,绝对不能自己重新计算或编造任何数字,不能修改、四舍五入方式也不要改变,直接引用给你的数字。
+2. 语气要鼓励、正向,但要诚实——如果这段时间体重变化不理想(比如目标减重但体重反而上升),不要回避这个事实,而是给出合理的解释角度(比如体重正常波动、肌肉增加、水分变化)和继续坚持的鼓励,不要说谎或掩盖数据。
+3. 如果"预计还需几周达到目标"这个数字是缺失的(null),代表当前趋势没有朝目标前进,要委婉地指出这一点,并建议用户可以去聊天框聊聊要不要调整计划。
+4. 长度控制在3-5句话,像一段简短的报告点评,不要写成长文章。
+5. 不要给出具体的医疗或饮食处方建议,你不是营养师或医生。
+"""
+
+
+def build_report_user_message(stats: ReportStats, profile: Profile, period_type: str) -> str:
+    period_label = "本周" if period_type == "weekly" else "本月"
+
+    if not stats.has_enough_data:
+        return f"""这位用户这个周期({period_label})记录的体重数据不足两条,没办法算出变化趋势。
+请写一段简短的话,鼓励用户坚持记录体重(建议每周至少记录一次),这样才能看到自己的进度。不要编造任何体重数字。"""
+
+    return f"""请根据以下已经算好的数据,为用户写一段{period_label}体重报告总结。
+
+【用户目标】
+目标: {profile.goal}
+设定目标时的体重: {profile.currentWeightKg} kg
+目标体重: {profile.targetWeightKg} kg
+
+【这个周期算出来的数据 - 直接引用,不要重新计算】
+{period_label}开始体重: {stats.start_weight_kg} kg
+{period_label}结束体重: {stats.end_weight_kg} kg
+{period_label}体重变化: {stats.delta_kg} kg (负数表示变轻,正数表示变重)
+朝目标前进的进度: {stats.progress_to_goal_percent}%
+按当前速度预计还需要: {f"{stats.projected_weeks_to_goal} 周达到目标" if stats.projected_weeks_to_goal is not None else "无法预测(当前趋势没有朝目标前进)"}
+
+请写一段总结文字。
 """

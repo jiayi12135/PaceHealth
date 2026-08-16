@@ -1,0 +1,125 @@
+-- PaceHealth MVP schema for Supabase Postgres.
+-- Authentication credentials live in Supabase Auth (auth.users), not this schema.
+
+create extension if not exists pgcrypto;
+
+create table if not exists public.profiles (
+    user_id uuid primary key references auth.users(id) on delete cascade,
+    name text not null,
+    age smallint check (age between 13 and 120),
+    sex text,
+    height_cm numeric(5, 2) check (height_cm > 0),
+    current_weight_kg numeric(6, 2) check (current_weight_kg > 0),
+    target_weight_kg numeric(6, 2) check (target_weight_kg > 0),
+    goal text,
+    lifestyle text,
+    exercise_frequency_per_week smallint check (exercise_frequency_per_week between 0 and 14),
+    exercise_duration_minutes smallint check (exercise_duration_minutes > 0),
+    exercise_location text,
+    created_at timestamptz not null default now(),
+    updated_at timestamptz not null default now()
+);
+
+create table if not exists public.user_personal_info (
+    user_id uuid primary key references auth.users(id) on delete cascade,
+    available_equipment text[] not null default '{}',
+    posture_issues text[] not null default '{}',
+    injuries text[] not null default '{}',
+    surgery_history text[] not null default '{}',
+    exercises_to_avoid text[] not null default '{}',
+    updated_at timestamptz not null default now()
+);
+
+create table if not exists public.ai_plans (
+    id uuid primary key default gen_random_uuid(),
+    user_id uuid not null references auth.users(id) on delete cascade,
+    plan_name text not null,
+    goal text not null,
+    weekly_frequency smallint not null check (weekly_frequency between 1 and 14),
+    created_at timestamptz not null default now()
+);
+
+create table if not exists public.exercises (
+    id bigint generated always as identity primary key,
+    plan_id uuid not null references public.ai_plans(id) on delete cascade,
+    day text not null,
+    exercise_name text not null,
+    sets smallint check (sets > 0),
+    reps smallint check (reps > 0),
+    duration_seconds integer check (duration_seconds > 0),
+    rest_seconds integer check (rest_seconds >= 0),
+    reason text not null,
+    video_url text,
+    check ((reps is null) <> (duration_seconds is null))
+);
+
+create table if not exists public.weight_records (
+    id uuid primary key default gen_random_uuid(),
+    user_id uuid not null references auth.users(id) on delete cascade,
+    weight_kg numeric(6, 2) not null check (weight_kg > 0),
+    recorded_at date not null,
+    created_at timestamptz not null default now(),
+    unique (user_id, recorded_at)
+);
+
+create table if not exists public.chat_records (
+    id uuid primary key default gen_random_uuid(),
+    user_id uuid not null references auth.users(id) on delete cascade,
+    role text not null check (role in ('user', 'assistant')),
+    message text not null,
+    created_at timestamptz not null default now()
+);
+
+create table if not exists public.reports (
+    id uuid primary key default gen_random_uuid(),
+    user_id uuid not null references auth.users(id) on delete cascade,
+    period_type text not null check (period_type in ('weekly', 'monthly')),
+    period_start date not null,
+    period_end date not null,
+    start_weight_kg numeric(6, 2),
+    end_weight_kg numeric(6, 2),
+    delta_kg numeric(6, 2),
+    progress_to_goal_percent numeric(6, 2),
+    projected_weeks_to_goal numeric(8, 2),
+    summary text not null,
+    created_at timestamptz not null default now(),
+    check (period_end >= period_start)
+);
+
+create table if not exists public.equipment_scans (
+    id uuid primary key default gen_random_uuid(),
+    user_id uuid not null references auth.users(id) on delete cascade,
+    image_url text not null,
+    equipment_name text,
+    confidence numeric(5, 4) check (confidence between 0 and 1),
+    ai_result jsonb,
+    created_at timestamptz not null default now()
+);
+
+create table if not exists public.workout_completions (
+    id uuid primary key default gen_random_uuid(),
+    user_id uuid not null references auth.users(id) on delete cascade,
+    plan_id uuid not null references public.ai_plans(id) on delete cascade,
+    day text not null,
+    completed_at timestamptz not null default now()
+);
+
+create index if not exists ai_plans_user_id_idx on public.ai_plans(user_id);
+create index if not exists exercises_plan_id_idx on public.exercises(plan_id);
+create index if not exists weight_records_user_date_idx on public.weight_records(user_id, recorded_at);
+create index if not exists chat_records_user_created_idx on public.chat_records(user_id, created_at);
+create index if not exists reports_user_period_idx on public.reports(user_id, period_type, period_start);
+create index if not exists equipment_scans_user_created_idx on public.equipment_scans(user_id, created_at);
+create index if not exists workout_completions_user_created_idx on public.workout_completions(user_id, completed_at);
+
+-- Secure by default: only the FastAPI backend's secret key may access these tables.
+-- Add user-scoped RLS policies later only if Flutter needs direct table access.
+alter table public.profiles enable row level security;
+alter table public.user_personal_info enable row level security;
+alter table public.ai_plans enable row level security;
+alter table public.exercises enable row level security;
+alter table public.weight_records enable row level security;
+alter table public.chat_records enable row level security;
+alter table public.reports enable row level security;
+alter table public.equipment_scans enable row level security;
+alter table public.workout_completions enable row level security;

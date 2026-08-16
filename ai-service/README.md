@@ -15,9 +15,10 @@ python3 -m venv venv
 source venv/bin/activate
 pip install -r requirements.txt
 cp .env.example .env   # 然后把 .env 里的 key 换成你自己的
-python3 test_local.py         # 测试生成计划功能
-python3 test_chat_local.py    # 测试聊天功能
-python3 test_report_local.py  # 测试周报/月报功能
+python3 test_local.py            # 测试生成计划功能
+python3 test_chat_local.py       # 测试聊天功能
+python3 test_report_local.py     # 测试周报/月报功能
+python3 test_equipment_local.py 你的照片.jpg  # 测试器材识别(需要一张真实的器材照片)
 ```
 
 也可以起服务在浏览器里测试:
@@ -38,12 +39,13 @@ from ai_service.app.router import router as ai_router
 app.include_router(ai_router, prefix="/ai")
 ```
 
-这样他的项目就会多出四个接口:
+这样他的项目就会多出五个接口:
 
 - `GET /ai/health` — 检查AI服务是否正常
 - `POST /ai/generate-plan` — 传入用户数据,返回生成的训练计划
 - `POST /ai/chat` — 聊天,传入这次的消息 + 之前的聊天记录,返回AI的回复
 - `POST /ai/report` — 周报/月报,传入这个周期的体重记录,返回算好的数字 + AI总结
+- `POST /ai/identify-equipment` — 拍照识别器材,传入图片,返回器材名称 + 使用说明 + 安全提示
 
 ### 生成计划 —— 请求格式
 
@@ -55,12 +57,13 @@ app.include_router(ai_router, prefix="/ai")
     "age": 28,
     "sex": "female",
     "heightCm": 165,
-    "currentWeightKg": 68,
+    "startWeightKg": 68,
     "targetWeightKg": 60,
     "goal": "lose_weight",
     "lifestyle": "sedentary desk job",
     "exerciseFrequencyPerWeek": 3,
     "exerciseDurationMinutes": 45,
+    "exerciseHabit": ["dancing", "swimming"],
     "exerciseLocation": "home"
   },
   "personalInfo": {
@@ -130,7 +133,7 @@ app.include_router(ai_router, prefix="/ai")
 {
   "userId": "string",
   "periodType": "weekly",
-  "profile": { "...": "同上面生成计划的格式,必填(需要targetWeightKg和currentWeightKg来算进度)" },
+  "profile": { "...": "同上面生成计划的格式,必填(需要targetWeightKg和startWeightKg来算进度)" },
   "weightRecords": [
     { "weightKg": 68.0, "recordedAt": "2026-08-08" },
     { "weightKg": 67.8, "recordedAt": "2026-08-10" },
@@ -147,7 +150,7 @@ app.include_router(ai_router, prefix="/ai")
 {
   "periodType": "weekly",
   "hasEnoughData": true,
-  "startWeightKg": 68.0,
+  "initialWeightKg": 68.0,
   "endWeightKg": 67.2,
   "deltaKg": -0.8,
   "progressToGoalPercent": 10.0,
@@ -162,15 +165,50 @@ app.include_router(ai_router, prefix="/ai")
 
 注意:
 
-- `startWeightKg` / `endWeightKg` / `deltaKg` / `progressToGoalPercent` / `projectedWeeksToGoal` 这几个数字**全部是Python代码算出来的,不是AI生成的**,保证准确,AI只写 `summary` 这段总结文字
+- `initialWeightKg`(这个周期开始时的体重,注意跟 `Profile.startWeightKg` 是两个不同概念,不要搞混)/ `endWeightKg` / `deltaKg` / `progressToGoalPercent` / `projectedWeeksToGoal` 这几个数字**全部是Python代码算出来的,不是AI生成的**,保证准确,AI只写 `summary` 这段总结文字
 - 如果这个周期内的体重记录少于2条,`hasEnoughData` 会是 `false`,上面几个数字字段全部是 `null`,`summary` 会是一段鼓励用户多记录体重的话
 - `projectedWeeksToGoal` 在当前趋势没有朝目标前进时(比如目标减重但体重反而增加、或者完全没变化)会是 `null`,这种情况 `summary` 里AI会委婉提醒用户
 - `weightRecords` 是把请求里传进来的体重记录原样返回,方便Frontend直接拿这个数组画折线图,不用再单独调用Backend的其他接口去查一次
+
+### 器材识别 —— 请求格式
+
+`imageUrl` 需要是一个**公开可访问**的图片链接(比如Supabase Storage生成的公开URL),Claude的服务器要能直接打开这个链接读图。Backend需要先把用户拍的照片上传到Supabase Storage拿到URL,再传给这个接口——**不是**传base64编码的图片内容,也不是传本地文件路径。
+
+```json
+{
+  "userId": "string",
+  "imageUrl": "https://xxx.supabase.co/storage/v1/object/public/xxx.jpg",
+  "personalInfo": { "...": "同上面生成计划的格式,可选" }
+}
+```
+
+### 器材识别 —— 返回格式
+
+```json
+{
+  "recognized": true,
+  "confidence": 0.92,
+  "equipmentName": "string",
+  "description": "string",
+  "targetMuscles": ["string"],
+  "usageInstructions": "string",
+  "safetyNotes": "string",
+  "personalizedWarning": null,
+  "notRecognizedMessage": null
+}
+```
+
+注意:
+
+- 目前**不做示范视频匹配**,只有文字说明,`Exercise.videoUrl` 那种视频链接功能不在这里
+- `confidence` 是0到1之间的小数,表示AI对这次识别的把握程度,这个是配合 `equipment_scans` 表里的 `confidence` 字段设计的,Backend存的时候直接存这个数字
+- 如果AI没能从照片里认出器材(照片模糊、拍的不是健身器材等),`recognized` 会是 `false`,`confidence` 通常会是个偏低的数字,`equipmentName`/`description`/`usageInstructions`/`safetyNotes` 全部是 `null`,`targetMuscles` 是空数组,只有 `notRecognizedMessage` 有内容(提示用户重新拍摄),Frontend这种情况下应该显示这条提示,引导用户重拍,而不是显示一堆空白字段
+- `personalizedWarning` 只有在传了 `personalInfo` 且这个器材对用户的伤病/体态问题有风险时才会有内容,平时是 `null`
 
 需要提前配置环境变量 `ANTHROPIC_API_KEY`(不要提交到git,放在 `.env` 里)。
 
 ## 还没做的部分(后续)
 
-- 拍照识别器材
+- 器材识别配示范视频(目前只有文字说明)
 - 训练完成率追踪(需要backend新增一张表,见 `docs/TEAM_INTEGRATION_GUIDE.md`)
 - 聊天里"一键应用AI建议的修改"(目前只能给建议,不能直接改计划)

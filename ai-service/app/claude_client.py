@@ -15,13 +15,15 @@ from dotenv import load_dotenv
 
 from typing import List, Optional
 
-from app.models import ChatMessage, Profile, UserPersonalInfo, WorkoutPlan
+from app.models import ChatMessage, EquipmentIdentifyResponse, Profile, UserPersonalInfo, WorkoutPlan
 from app.prompts import (
     PLAN_SYSTEM_PROMPT,
     REPORT_SYSTEM_PROMPT,
+    EQUIPMENT_SYSTEM_PROMPT,
     build_user_message,
     build_chat_system_context,
     build_report_user_message,
+    build_equipment_user_message,
 )
 from app.report_calculator import ReportStats
 
@@ -60,6 +62,27 @@ WORKOUT_PLAN_TOOL = {
             },
         },
         "required": ["planName", "goal", "weeklyFrequency", "exercises"],
+    },
+}
+
+# 强制 Claude 按这个 schema 返回结果(对应 models.py 里的 EquipmentIdentifyResponse)
+EQUIPMENT_IDENTIFY_TOOL = {
+    "name": "submit_equipment_info",
+    "description": "提交识别出的健身器材信息",
+    "input_schema": {
+        "type": "object",
+        "properties": {
+            "recognized": {"type": "boolean", "description": "是否成功从照片中识别出健身器材"},
+            "confidence": {"type": "number", "description": "0到1之间的小数,表示你对这次识别结果的把握程度,越确定越接近1;如果recognized为false,通常应该是比较低的数字(比如0.1-0.3)"},
+            "equipmentName": {"type": ["string", "null"], "description": "器材名称,recognized为false时填null"},
+            "description": {"type": ["string", "null"], "description": "这个器材是什么、主要用来练什么,recognized为false时填null"},
+            "targetMuscles": {"type": "array", "items": {"type": "string"}, "description": "主要训练的肌群,recognized为false时给空数组"},
+            "usageInstructions": {"type": ["string", "null"], "description": "使用步骤说明,recognized为false时填null"},
+            "safetyNotes": {"type": ["string", "null"], "description": "安全注意事项和常见错误,recognized为false时填null"},
+            "personalizedWarning": {"type": ["string", "null"], "description": "如果这个器材对用户的伤病/体态问题有风险,在这里提醒并给替代建议;没有风险或没有用户信息则为null"},
+            "notRecognizedMessage": {"type": ["string", "null"], "description": "recognized为false时,给用户的友好提示(比如建议重新拍摄);recognized为true时填null"},
+        },
+        "required": ["recognized", "confidence", "targetMuscles"],
     },
 }
 
@@ -111,6 +134,50 @@ def generate_chat_reply(
     # 聊天场景下直接取文字回复(没有用tool use,因为不需要固定JSON格式)
     text_blocks = [block.text for block in response.content if block.type == "text"]
     return "".join(text_blocks).strip()
+
+
+def identify_equipment(
+    image_url: str,
+    personal_info: Optional[UserPersonalInfo],
+) -> EquipmentIdentifyResponse:
+    """调用 Claude 的 vision 能力识别照片里的健身器材,返回结构化结果。
+
+    图片用URL的方式传给Claude(source.type="url"),Claude会自己去访问这个链接读图,
+    我们这个服务不需要下载图片、不需要转base64。这要求 image_url 必须是一个
+    公开可访问的地址(比如Supabase Storage生成的公开链接),Claude的服务器访问不到
+    你自己电脑上的本地文件路径。
+    """
+
+    user_message = build_equipment_user_message(personal_info)
+
+    response = client.messages.create(
+        model=MODEL_NAME,
+        max_tokens=1024,
+        system=EQUIPMENT_SYSTEM_PROMPT,
+        tools=[EQUIPMENT_IDENTIFY_TOOL],
+        tool_choice={"type": "tool", "name": "submit_equipment_info"},
+        messages=[
+            {
+                "role": "user",
+                "content": [
+                    {
+                        "type": "image",
+                        "source": {
+                            "type": "url",
+                            "url": image_url,
+                        },
+                    },
+                    {"type": "text", "text": user_message},
+                ],
+            }
+        ],
+    )
+
+    for block in response.content:
+        if block.type == "tool_use" and block.name == "submit_equipment_info":
+            return EquipmentIdentifyResponse.model_validate(block.input)
+
+    raise RuntimeError("Claude 没有返回预期的 tool_use 结果,请检查prompt或API返回内容")
 
 
 def generate_report_summary(stats: ReportStats, profile: Profile, period_type: str) -> str:

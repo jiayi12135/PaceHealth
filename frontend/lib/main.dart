@@ -13,7 +13,7 @@ class PaceHealthApp extends StatelessWidget {
     animation: store,
     builder: (_, __) => MaterialApp(
       title: 'PaceHealth',
-      theme: ThemeData(useMaterial3: true, colorSchemeSeed: const Color(0xff287d68), scaffoldBackgroundColor: const Color(0xfff6faf8), cardTheme: const CardTheme(elevation: 0, margin: EdgeInsets.zero)),
+      theme: ThemeData(useMaterial3: true, colorSchemeSeed: const Color(0xff287d68), scaffoldBackgroundColor: const Color(0xfff6faf8), cardTheme: const CardThemeData(elevation: 0, margin: EdgeInsets.zero)),
       home: store.completed ? AppShell(store: store) : QuestionnaireScreen(store: store),
     ),
   );

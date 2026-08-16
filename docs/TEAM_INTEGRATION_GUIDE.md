@@ -53,7 +53,7 @@ PaceHealth/
 - [x] AI 根据用户资料生成个性化训练计划(prompt 设计 + Claude API 调用),已用真实 API 测试通过
 - [x] 聊天框(健身知识问答 + 调整计划建议),已实现,格式见第4节
 - [x] 周报 / 月报(体重趋势 + AI总结文字),已实现,格式见第4节
-- [ ] 拍照识别健身器材
+- [x] 拍照识别健身器材(简化版:只有文字说明,不含示范视频匹配),已实现,格式见第4节
 - [ ] Backend:登录、数据库、各表的增删改查
 - [ ] Frontend:所有页面
 
@@ -79,18 +79,21 @@ from app.routers.ai import router as ai_router
 app.include_router(ai_router, prefix="/ai")
 ```
 
-这样你的项目就会多出四个接口:
+这样你的项目就会多出五个接口:
 
 - `GET /ai/health` — 确认 AI 服务正常
 - `POST /ai/generate-plan` — 传入用户数据,返回生成的训练计划
 - `POST /ai/chat` — 聊天,传入这次消息 + 历史记录,返回AI回复(格式见第4节)
 - `POST /ai/report` — 周报/月报,传入这个周期的体重记录,返回算好的数字 + AI总结(格式见第4节)
+- `POST /ai/identify-equipment` — 拍照识别器材,传入图片base64,返回器材名称+用法+安全提示(格式见第4节)
 
 需要在 `.env` 里配置 `ANTHROPIC_API_KEY`(找 Stephanie 要,不要提交到 git)。
 
 **聊天功能重要说明:** `/ai/chat` 这个接口本身不会存聊天记录,也不会去数据库查历史——每次调用都需要 Backend 自己从 `Chat Record` 表里查出这个用户之前的对话,按顺序传进 `history` 字段。同时,AI 在聊天里如果建议用户调整计划,**不会自动更新数据库里的计划**,只是给建议;真正要改计划还是要走 `/ai/generate-plan`。
 
-**周报/月报重要说明:** `weightRecords` 需要 Backend 自己从 `Weight Record` 表按时间范围(本周/本月)查出来、按时间从早到晚排序后传过来。里面的 `startWeightKg`/`endWeightKg`/`deltaKg`/`progressToGoalPercent`/`projectedWeeksToGoal` 这几个数字是这个AI服务用代码算出来的(没有用AI去算,保证准确),只有 `summary` 那段话是AI写的。
+**周报/月报重要说明:** `weightRecords` 需要 Backend 自己从 `Weight Record` 表按时间范围(本周/本月)查出来、按时间从早到晚排序后传过来。里面的 `initialWeightKg`/`endWeightKg`/`deltaKg`/`progressToGoalPercent`/`projectedWeeksToGoal` 这几个数字是这个AI服务用代码算出来的(没有用AI去算,保证准确),只有 `summary` 那段话是AI写的。`initialWeightKg` 指的是"这个周期开始时"的体重,跟下面 `Profile.startWeightKg`(最初设定目标时的体重)是两个不同概念。
+
+**器材识别重要说明:** 目前是简化版,只返回文字说明(器材名称、用法、安全提示),**没有**示范视频匹配功能。图片需要传公开可访问的URL过来(配合Backend的Supabase Storage设计),不是传base64或文件本身。
 
 ### 需要你补的字段
 
@@ -116,12 +119,13 @@ AI 只负责"生成内容"这部分(`planName`、`goal`、`weeklyFrequency`、`e
     "age": 28,
     "sex": "female",
     "heightCm": 165,
-    "currentWeightKg": 68,
+    "startWeightKg": 68,
     "targetWeightKg": 60,
     "goal": "lose_weight",
     "lifestyle": "sedentary desk job",
     "exerciseFrequencyPerWeek": 3,
     "exerciseDurationMinutes": 45,
+    "exerciseHabit": ["dancing", "swimming"],
     "exerciseLocation": "home"
   },
   "personalInfo": {
@@ -135,6 +139,8 @@ AI 只负责"生成内容"这部分(`planName`、`goal`、`weeklyFrequency`、`e
 ```
 
 这份数据从 Frontend 的"问卷收集"页面来 → 传给 Backend → Backend 转发给 AI 接口。
+
+**字段更新(团队会议决定):** 原来的 `currentWeightKg` 改名成 `startWeightKg`,意思是"用户最初设定目标时的体重",这个值定了之后不会跟着日常体重打卡更新(区别于 `Weight Record` 表里那些持续新增的打卡记录)。另外新增了 `exerciseHabit` 字段(平时喜欢的运动方式,比如跳舞、游泳,数组格式)。三边都要同步改,`docs/API_CONTRACT.md`、`docs/DATABASE_SCHEMA_GUIDE.md`、Frontend的Dart模型、Backend的测试代码目前还是旧的 `currentWeightKg`,需要一起更新。
 
 ### 返回
 
@@ -214,7 +220,7 @@ Backend 拿到 `reply` 后,连同用户刚才发的 `message`,各自存一行进
 {
   "periodType": "weekly",
   "hasEnoughData": true,
-  "startWeightKg": 68.0,
+  "initialWeightKg": 68.0,
   "endWeightKg": 67.2,
   "deltaKg": -0.8,
   "progressToGoalPercent": 10.0,
@@ -233,32 +239,53 @@ Backend 拿到 `reply` 后,连同用户刚才发的 `message`,各自存一行进
 
 ### 关于"训练完成率"
 
-如果之后想在报告里加"这周计划练3次实际练了几次",目前的数据表里没有任何地方记录"用户是否真的完成了某次训练",需要新增一张表,建议字段如下(Stephanie 已经设计好,讨论后再决定要不要加):
+已经确认 Backend 在 Supabase 里建好了 `workout_completions` 表(`id`/`user_id`/`plan_id`/`day`/`completed_at`),跟这里最早建议的设计基本一致,这个功能算是已经在做了。Frontend 需要在训练页加一个"完成"按钮,点击后插入一条记录即可,不需要用户填任何详细数据。这个功能**不需要AI接口**,属于Backend + Frontend配合就能做的纯统计功能(周报里"完成X/Y次"直接查这张表算)。
 
-```
-WorkoutCompletion
-completionId    — 数据库自动生成的主键
-userId          — 哪个用户完成的
-planId          — 对应哪个训练计划
-day             — 对应SportsType里的day字段,标记"这一天"完成了
-completedAt     — 用户点"完成"按钮的时间戳
+### 请求 `POST /ai/identify-equipment`
+
+`imageUrl` 需要是一个**公开可访问的图片链接**(不是base64、不是本地文件路径)。这是配合 Backend 在 Supabase 里建的 `equipment_scans` 表设计的——用户拍完照后,Backend 先把图片传到 Supabase Storage 拿到URL,再把URL传给这个接口。`personalInfo` 可选,传了的话AI会检查这个器材对用户的伤病/体态问题有没有风险。
+
+```json
+{
+  "userId": "string",
+  "imageUrl": "https://xxx.supabase.co/storage/v1/object/public/xxx.jpg",
+  "personalInfo": { "...": "跟上面 generate-plan 的 personalInfo 格式一样,可选" }
+}
 ```
 
-Frontend 需要在训练页加一个"完成"按钮,点击后插入一条记录即可,不需要用户填任何详细数据。这个功能目前**还没有对应的AI接口**,属于Backend + Frontend配合就能做的纯统计功能(周报里"完成X/Y次"直接查这张表算,不需要调用AI)。
+### 返回
+
+```json
+{
+  "recognized": true,
+  "confidence": 0.92,
+  "equipmentName": "string",
+  "description": "string",
+  "targetMuscles": ["string"],
+  "usageInstructions": "string",
+  "safetyNotes": "string",
+  "personalizedWarning": null,
+  "notRecognizedMessage": null
+}
+```
+
+`confidence`(0到1之间的小数)是配合 `equipment_scans` 表里的 `confidence` 字段加的,Backend把AI返回的这个数字直接存进那一列就行。`ai_result` 那个jsonb字段建议把整个返回结果原样存进去,方便以后回溯。
+
+如果AI认不出照片里的器材,`recognized` 会是 `false`,其他字段大多是 `null`,只有 `notRecognizedMessage` 有内容(提示用户重新拍摄)——Frontend 这种情况下应该显示这条提示引导用户重拍,而不是展示空白的器材信息卡片。**目前没有示范视频功能**,只有文字说明。
 
 ---
 
 ## 5. 给 Frontend 队友的说明
 
-需要做的页面(对应 Part 1 需求):登录、问卷收集(身高体重目标 + 个性化问题)、拍照识别器材(暂时可以先做 UI,功能等 Stephanie 完成)、计划展示页、聊天框、周报月报、Profile、Setting。
+需要做的页面(对应 Part 1 需求):登录、问卷收集(身高体重目标 + 个性化问题)、拍照识别器材、计划展示页、聊天框、周报月报、Profile、Setting。AI这四块功能(生成计划/聊天/周报/器材识别)现在全部做完了,Frontend不用等,可以直接照第4节的格式对接。
 
 跟 AI 功能直接相关的几个页面:
 
 1. **问卷收集页**:收集完数据后,按第4节的请求格式打包成 JSON,通过 `api_service.dart` 发给 Backend 的 `POST /ai/generate-plan`(具体网址等 Backend 队友把项目跑起来后给你)
 2. **计划展示页**:拿到第4节的返回 JSON 后,按 `day` 分组显示每天的动作列表,每个动作显示名称、组数、次数/时长、休息时间、以及 `reason`(推荐理由,建议展示出来,这是个性化的重点)
-3. **聊天页**:见第4节聊天接口部分
-4. **周报/月报页**:调用 `POST /ai/report` 拿到数据后,数字部分(`startWeightKg`/`endWeightKg`/`deltaKg`/`progressToGoalPercent`)可以做成体重趋势图/进度条这类可视化,`summary` 那段文字直接展示在下方当作"AI点评"。如果 `hasEnoughData` 是 `false`,不要尝试画图,只显示 `summary` 里鼓励记录体重的话就好
 3. **聊天页**:一个普通的对话气泡界面就够了。每次用户发消息,把这条消息 + 当前已经显示在界面上的历史记录,发给 Backend 的 `POST /ai/chat`,拿到 `reply` 后加一条新的AI气泡显示出来。如果AI在回复里建议调整计划,目前不会自动更新计划页面,用户需要自己再走一次生成计划的流程(可以在AI建议调整时,加一个"重新生成计划"的按钮方便用户操作)
+4. **周报/月报页**:调用 `POST /ai/report` 拿到数据后,数字部分(`initialWeightKg`/`endWeightKg`/`deltaKg`/`progressToGoalPercent`)可以做成体重趋势图/进度条这类可视化,`weightRecords` 数组可以直接拿去画折线图,`summary` 那段文字直接展示在下方当作"AI点评"。如果 `hasEnoughData` 是 `false`,不要尝试画图,只显示 `summary` 里鼓励记录体重的话就好
+5. **拍照识别器材页**:用户拍照/选图后,Frontend 先把图片上传到 Backend(Backend 再存到 Supabase Storage 拿到URL,这一步不是Frontend直接传base64了,是配合Backend在Supabase里建的 `equipment_scans` 表设计的),Backend 上传完拿到图片URL后,再调用 `POST /ai/identify-equipment` 传这个URL过去。拿到结果后,如果 `recognized` 是 `true`,展示器材名称、说明、使用方法、安全提示;如果有 `personalizedWarning`,建议用醒目的颜色/图标单独标出来提醒用户。如果 `recognized` 是 `false`,显示 `notRecognizedMessage` 引导用户重新拍摄,不要展示空白卡片。目前**没有**示范视频,不用做视频播放器
 
 在 Backend 还没搭好之前,可以直接用第4节的 JSON 示例当作假数据(mock),先把 UI 做出来,不用等。
 

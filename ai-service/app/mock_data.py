@@ -9,12 +9,13 @@ MOCK_PROFILE = Profile(
     age=28,
     sex="female",
     heightCm=165,
-    currentWeightKg=68,
+    startWeightKg=68,
     targetWeightKg=60,
     goal="lose_weight",
     lifestyle="sedentary desk job, sits 8+ hours a day",
     exerciseFrequencyPerWeek=3,
     exerciseDurationMinutes=45,
+    exerciseHabit=["dancing", "swimming"],
     exerciseLocation="home",
 )
 

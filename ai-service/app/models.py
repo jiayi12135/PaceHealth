@@ -15,13 +15,14 @@ class Profile(BaseModel):
     age: int
     sex: str  # "male" / "female" / "other"
     heightCm: float
-    currentWeightKg: float
+    startWeightKg: float  # 最一开始用户输入/设定目标时的体重,团队会议决定用这个名字替代原来含糊的currentWeightKg,这个值定了之后不会跟着日常体重打卡变动
     targetWeightKg: float
     goal: str  # 例如 "lose_weight", "gain_muscle", "improve_endurance"
     lifestyle: str  # 例如 "sedentary desk job", "active retail job"
     exerciseFrequencyPerWeek: int
     exerciseDurationMinutes: int
-    exerciseLocation: str  # 例如 "home", "gym", "outdoor"
+    exerciseHabit: List[str] = Field(default_factory=list)  # 例如 ["dancing", "swimming", "sport"]
+    exerciseLocation: str  # 例如 "home", "gym", "swimming", "pilates"
 
 
 # ---------- 输入:对应 UserPersonalInfo 表 ----------
@@ -99,16 +100,42 @@ class ReportRequest(BaseModel):
 
 
 # ---------- 报告:返回体 ----------
-# startWeightKg / endWeightKg / deltaKg / progressToGoalPercent / projectedWeeksToGoal
+# initialWeightKg / endWeightKg / deltaKg / progressToGoalPercent / projectedWeeksToGoal
 # 全部由Python代码算出来(见 report_calculator.py),不是AI生成的,保证数字准确。
 # summary 才是AI写的那段总结文字。
+# 注意: initialWeightKg 指的是"这个周期(本周/本月)开始时"的体重,跟 Profile.startWeightKg
+# (最初设定目标时的体重)是两个不同的概念,不要搞混——这个字段名对齐的是 Report 表里的 initialWeightKg。
 class ReportResponse(BaseModel):
     periodType: Literal["weekly", "monthly"]
     hasEnoughData: bool  # 记录数不够(少于2条)时为False,此时下面几个数字字段会是null
-    startWeightKg: Optional[float] = None
+    initialWeightKg: Optional[float] = None
     endWeightKg: Optional[float] = None
     deltaKg: Optional[float] = None  # 负数=变轻,正数=变重
     progressToGoalPercent: Optional[float] = None  # 0-100,朝目标体重前进了百分之多少
     projectedWeeksToGoal: Optional[float] = None  # 按当前速度还需要几周达到目标,如果方向不对/没有变化则为null
     summary: str  # AI生成的总结文字
     weightRecords: List[WeightPoint] = Field(default_factory=list)  # 原样带回请求里传的体重记录,方便frontend直接画折线图,不用再单独查一次
+
+
+# ---------- 器材识别:请求体 ----------
+# 图片用URL传过来(backend先把用户拍的照片上传到Supabase Storage,拿到一个公开可访问
+# 的URL,再把这个URL传给这个AI服务;这个AI服务会直接把URL交给Claude去读图,
+# 不需要自己下载图片、不需要转base64)。
+# personalInfo可选,传了的话AI会在安全提示里额外考虑用户的伤病情况。
+class EquipmentIdentifyRequest(BaseModel):
+    userId: str
+    imageUrl: str  # 图片的公开访问URL(比如Supabase Storage生成的链接),必须是Claude能直接访问到的地址
+    personalInfo: Optional[UserPersonalInfo] = None
+
+
+# ---------- 器材识别:返回体 ----------
+class EquipmentIdentifyResponse(BaseModel):
+    recognized: bool  # False表示AI没能从照片里认出健身器材(照片不清楚/不是器材/看不出来)
+    confidence: float  # 0到1之间,AI对这次识别结果的把握程度(recognized=False时通常会是较低的数字)
+    equipmentName: Optional[str] = None  # 识别出的器材名称,recognized=False时为null
+    description: Optional[str] = None  # 这个器材是什么、主要用来练什么
+    targetMuscles: List[str] = Field(default_factory=list)  # 主要训练的肌群
+    usageInstructions: Optional[str] = None  # 怎么使用这个器材(步骤说明)
+    safetyNotes: Optional[str] = None  # 使用时的安全注意事项、常见错误
+    personalizedWarning: Optional[str] = None  # 如果传了personalInfo,且这个器材可能不适合用户的伤病情况,这里会有提醒;没有顾虑则为null
+    notRecognizedMessage: Optional[str] = None  # recognized=False时,给用户的提示(比如"照片不够清楚,请重新拍摄")

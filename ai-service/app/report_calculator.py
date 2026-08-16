@@ -45,16 +45,15 @@ def calculate_report_stats(weight_records: List[WeightPoint], profile: Profile) 
     delta_kg = round(end_weight_kg - start_weight_kg, 2)
 
     # ---- 目标进度百分比 ----
-    # 用 profile.currentWeightKg 当作"起点"(用户设定目标时的体重),
-    # 用最新一条体重记录当作"现在的位置",算走了目标距离的百分之多少。
-    # 注意: 如果 currentWeightKg 后续没有跟着更新,这个百分比的准确度取决于
-    # 这个字段是否代表用户最初设定目标时的体重,这个假设需要和backend确认。
-    direction_kg = profile.targetWeightKg - profile.currentWeightKg  # 正=要增重,负=要减重
+    # 用 profile.startWeightKg 当作"起点"(用户最初设定目标时的体重,团队会议已经确认
+    # 这个字段固定不变,不会跟着日常体重打卡更新),用最新一条体重记录当作"现在的位置",
+    # 算走了目标距离的百分之多少。
+    direction_kg = profile.targetWeightKg - profile.startWeightKg  # 正=要增重,负=要减重
     progress_to_goal_percent: Optional[float] = None
     if direction_kg == 0:
         progress_to_goal_percent = 100.0
     else:
-        traveled_kg = end_weight_kg - profile.currentWeightKg
+        traveled_kg = end_weight_kg - profile.startWeightKg
         progress_to_goal_percent = round((traveled_kg / direction_kg) * 100, 1)
 
     # ---- 按当前速度预计还需要几周达到目标 ----

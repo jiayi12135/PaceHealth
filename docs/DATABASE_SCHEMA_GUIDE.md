@@ -30,7 +30,11 @@ Flutter and HTTP JSON use `camelCase`:
 
 ```json
 {
+<<<<<<< Updated upstream
   "currentWeightKg": 68,
+=======
+  "startWeightKg": 68,
+>>>>>>> Stashed changes
   "exerciseFrequencyPerWeek": 3
 }
 ```
@@ -38,7 +42,11 @@ Flutter and HTTP JSON use `camelCase`:
 Python and PostgreSQL use `snake_case`:
 
 ```text
+<<<<<<< Updated upstream
 current_weight_kg
+=======
+start_weight_kg
+>>>>>>> Stashed changes
 exercise_frequency_per_week
 ```
 
@@ -81,12 +89,20 @@ Stores the user's basic health profile and fitness goal.
 | `age` | User age |
 | `sex` | Sex value agreed with Flutter |
 | `height_cm` | Height in centimetres |
+<<<<<<< Updated upstream
 | `current_weight_kg` | Current design uses the document's `currentWeightKg` field |
+=======
+| `start_weight_kg` | Weight when the goal was set (resolved Decision 1 — renamed from `current_weight_kg`; does not move with daily `weight_records` check-ins) |
+>>>>>>> Stashed changes
 | `target_weight_kg` | Target weight in kilograms |
 | `goal` | Example: `lose_weight` or `gain_muscle` |
 | `lifestyle` | Description used for personalization |
 | `exercise_frequency_per_week` | Planned exercise sessions per week |
 | `exercise_duration_minutes` | Preferred duration of one session |
+<<<<<<< Updated upstream
+=======
+| `exercise_habit` | List of usual exercise activities (e.g. dancing, swimming), used to personalize AI plans |
+>>>>>>> Stashed changes
 | `exercise_location` | Example: home, gym, or outdoor |
 | `created_at` | Creation timestamp |
 | `updated_at` | Latest update timestamp |
@@ -204,7 +220,11 @@ Stores equipment images and future recognition results.
 | `ai_result` | Full structured recognition response |
 | `created_at` | Upload timestamp |
 
+<<<<<<< Updated upstream
 Stephanie's current branch does not implement equipment recognition yet.
+=======
+Populated by `POST /equipment/scan`, which uploads the image to Supabase Storage, calls the AI service's `/ai/identify-equipment` logic, and saves the result here.
+>>>>>>> Stashed changes
 
 ### `workout_completions`
 
@@ -233,6 +253,7 @@ This table tracks completion of a whole plan day, not every individual exercise.
 
 ## Decisions for the team meeting
 
+<<<<<<< Updated upstream
 ### Decision 1: What does `currentWeightKg` mean?
 
 Stephanie's report code treats it as the starting weight when the goal was created. Its name suggests it is always the latest weight.
@@ -243,6 +264,11 @@ Recommended decision:
 - Keep `currentWeightKg` fixed while a goal is active and get the latest value from `weight_records`.
 
 Do not continuously update it without also changing Stephanie's progress calculation.
+=======
+### Decision 1: What does `currentWeightKg` mean? — Resolved
+
+Renamed to `startWeightKg` (`start_weight_kg` in the database). It is the weight recorded when the goal was set and stays fixed while a goal is active; the latest weight always comes from `weight_records`. Updated in `backend/app/schemas/user.py`, `backend/supabase/schema.sql` (see `backend/supabase/migrations/0001_rename_start_weight_add_exercise_habit.sql` for the migration on the already-created table), `backend/tests/test_users.py`, and `docs/API_CONTRACT.md`.
+>>>>>>> Stashed changes
 
 ### Decision 2: How many weight records are allowed per day?
 
@@ -253,12 +279,18 @@ Choose one:
 - One daily record that can be replaced, or
 - Multiple measurements using a full timestamp
 
+<<<<<<< Updated upstream
 ### Decision 3: Should reports be saved?
 
 Choose one:
 
 - Generate and save reports for history, or
 - Calculate reports dynamically each time
+=======
+### Decision 3: Should reports be saved? — Resolved
+
+Yes. `POST /ai/report` saves each generated report into the `reports` table after Claude succeeds (consistent with Decision 5).
+>>>>>>> Stashed changes
 
 ### Decision 4: Who calls Supabase Auth?
 
@@ -268,13 +300,24 @@ Alternative: Flutter uses Supabase Auth directly and only sends the access token
 
 The team must choose one flow so two different authentication implementations are not built.
 
+<<<<<<< Updated upstream
 ### Decision 5: Should AI endpoints save automatically?
 
 Recommended behavior:
+=======
+### Decision 5: Should AI endpoints save automatically? — Resolved
+
+Yes, implemented as recommended:
+>>>>>>> Stashed changes
 
 - `/ai/generate-plan` saves the plan and exercises after Claude succeeds.
 - `/ai/chat` saves both the user message and assistant reply.
 - `/ai/report` loads weight records, calculates the report, and saves the result.
+<<<<<<< Updated upstream
+=======
+- `/equipment/scan` saves the uploaded image URL and recognition result to `equipment_scans`.
+- `/ai/identify-ingredients` and `/ai/generate-meal-plan` do **not** save anything yet — see Decision 8.
+>>>>>>> Stashed changes
 
 ### Decision 6: Are optional features in the first demo?
 
@@ -294,6 +337,16 @@ Agree on exact values for:
 
 This prevents Flutter, FastAPI, and AI from using different spellings.
 
+<<<<<<< Updated upstream
+=======
+### Decision 8: Should ingredient scans and meal plans be persisted?
+
+New with the meal-planning feature (`POST /ai/identify-ingredients`, `POST /ai/generate-meal-plan`). Neither result is saved to the database today — both are generated on demand and returned directly to the caller. Choose one:
+
+- Add an `ingredient_scans` table (mirroring `equipment_scans`: `image_url`, detected ingredients as `jsonb`, `created_at`) and/or a `meal_plans` table (mirroring `ai_plans` + `exercises`) for history, or
+- Keep both stateless for the first demo and revisit after the core Part 1 flows are stable.
+
+>>>>>>> Stashed changes
 ## Recommended meeting outcome
 
 Before ending the meeting, record a clear answer for every decision above. Then update:

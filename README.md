@@ -17,7 +17,11 @@ python -m venv .venv
 Copy-Item .env.example .env
 ```
 
+<<<<<<< Updated upstream
 Fill in `backend/.env` with the Supabase project URL and backend-only secret key. Never commit this file or expose the secret key to Flutter.
+=======
+Fill in `backend/.env` with the Supabase project URL, backend-only secret key, and `ANTHROPIC_API_KEY` (needed by the AI endpoints — see `backend/.env.example`). Never commit this file or expose any of these keys to Flutter. The AI endpoints that accept photo uploads (`/equipment/scan`, `/ingredients/scan`) also need a public Supabase Storage bucket named `scans` created ahead of time (Storage -> New bucket in the Supabase dashboard; the name is configurable via `SCAN_STORAGE_BUCKET`).
+>>>>>>> Stashed changes
 
 Start the API:
 
@@ -37,6 +41,16 @@ Implemented endpoints:
 - `POST /weights`
 - `GET /weights`
 - `DELETE /weights/{weightLogId}`
+<<<<<<< Updated upstream
+=======
+- `GET /ai/health`
+- `POST /ai/generate-plan`
+- `POST /ai/chat`
+- `POST /ai/report`
+- `POST /ai/generate-meal-plan`
+- `POST /equipment/scan`
+- `POST /ingredients/scan`
+>>>>>>> Stashed changes
 
 Run tests:
 

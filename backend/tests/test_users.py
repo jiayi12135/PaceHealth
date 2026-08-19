@@ -16,12 +16,20 @@ PROFILE_JSON = {
         "age": 28,
         "sex": "female",
         "heightCm": 165,
+<<<<<<< Updated upstream
         "currentWeightKg": 68,
+=======
+        "startWeightKg": 68,
+>>>>>>> Stashed changes
         "targetWeightKg": 60,
         "goal": "lose_weight",
         "lifestyle": "sedentary desk job",
         "exerciseFrequencyPerWeek": 3,
         "exerciseDurationMinutes": 45,
+<<<<<<< Updated upstream
+=======
+        "exerciseHabit": ["dancing", "swimming"],
+>>>>>>> Stashed changes
         "exerciseLocation": "home",
     },
     "personalInfo": {
@@ -61,7 +69,11 @@ def test_get_my_profile_returns_saved_data() -> None:
 
     assert response.status_code == 200
     assert response.json()["userId"] == USER_ID
+<<<<<<< Updated upstream
     assert response.json()["profile"]["currentWeightKg"] == 68
+=======
+    assert response.json()["profile"]["startWeightKg"] == 68
+>>>>>>> Stashed changes
     profile_service.get.assert_called_once_with(USER_ID)
 
 

@@ -9,12 +9,25 @@ create table if not exists public.profiles (
     age smallint check (age between 13 and 120),
     sex text,
     height_cm numeric(5, 2) check (height_cm > 0),
+<<<<<<< Updated upstream
     current_weight_kg numeric(6, 2) check (current_weight_kg > 0),
+=======
+    -- Renamed from current_weight_kg: the weight recorded when the goal was set. It does
+    -- not change with daily weight_records check-ins (see docs/DATABASE_SCHEMA_GUIDE.md
+    -- Decision 1, resolved by team agreement).
+    start_weight_kg numeric(6, 2) check (start_weight_kg > 0),
+>>>>>>> Stashed changes
     target_weight_kg numeric(6, 2) check (target_weight_kg > 0),
     goal text,
     lifestyle text,
     exercise_frequency_per_week smallint check (exercise_frequency_per_week between 0 and 14),
     exercise_duration_minutes smallint check (exercise_duration_minutes > 0),
+<<<<<<< Updated upstream
+=======
+    -- Added per team agreement: usual exercise habits (e.g. dancing, swimming), used by
+    -- the AI service to personalize generated plans.
+    exercise_habit text[] not null default '{}',
+>>>>>>> Stashed changes
     exercise_location text,
     created_at timestamptz not null default now(),
     updated_at timestamptz not null default now()

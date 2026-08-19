@@ -8,17 +8,14 @@
 - 有时候输出markdown代码块包裹JSON导致解析报错
 """
 
-import os
-import json
-from anthropic import Anthropic
-from dotenv import load_dotenv
-
+from functools import lru_cache
 from typing import List, Optional
 
-<<<<<<< Updated upstream
-from app.models import ChatMessage, EquipmentIdentifyResponse, Profile, UserPersonalInfo, WorkoutPlan
-=======
-from app.models import (
+from anthropic import Anthropic
+
+from app.core.config import get_settings
+from app.errors import APIError
+from app.services.ai.models import (
     ChatMessage,
     EquipmentIdentifyResponse,
     IngredientIdentifyResponse,
@@ -28,33 +25,42 @@ from app.models import (
     UserPersonalInfo,
     WorkoutPlan,
 )
->>>>>>> Stashed changes
-from app.prompts import (
+from app.services.ai.prompts import (
     PLAN_SYSTEM_PROMPT,
     REPORT_SYSTEM_PROMPT,
     EQUIPMENT_SYSTEM_PROMPT,
-<<<<<<< Updated upstream
-=======
     INGREDIENT_SYSTEM_PROMPT,
     MEAL_PLAN_SYSTEM_PROMPT,
->>>>>>> Stashed changes
     build_user_message,
     build_chat_system_context,
     build_report_user_message,
     build_equipment_user_message,
-<<<<<<< Updated upstream
-=======
     build_ingredient_user_message,
     build_meal_plan_user_message,
->>>>>>> Stashed changes
 )
-from app.report_calculator import ReportStats
-
-load_dotenv()
-
-client = Anthropic(api_key=os.environ.get("ANTHROPIC_API_KEY"))
+from app.services.ai.report_calculator import ReportStats
 
 MODEL_NAME = "claude-sonnet-4-5-20250929"
+
+
+@lru_cache
+def _get_client() -> Anthropic:
+    """Build the Anthropic client lazily (and cache it) instead of at import time.
+
+    Importing this module must never fail just because ANTHROPIC_API_KEY isn't
+    configured yet — that would break app startup (and every other router) for
+    anyone running the backend without an AI key. The key is only required once
+    an AI endpoint is actually called, and a missing key surfaces as a clear
+    502 instead of crashing the whole app.
+    """
+    settings = get_settings()
+    if settings.anthropic_api_key is None:
+        raise APIError(
+            502,
+            "The AI service is not configured (missing ANTHROPIC_API_KEY).",
+            "AI_NOT_CONFIGURED",
+        )
+    return Anthropic(api_key=settings.anthropic_api_key.get_secret_value())
 
 # 强制 Claude 按这个 schema 返回结果(对应 models.py 里的 WorkoutPlan)
 WORKOUT_PLAN_TOOL = {
@@ -109,8 +115,6 @@ EQUIPMENT_IDENTIFY_TOOL = {
     },
 }
 
-<<<<<<< Updated upstream
-=======
 # 强制 Claude 按这个 schema 返回结果(对应 models.py 里的 IngredientIdentifyResponse)
 INGREDIENT_IDENTIFY_TOOL = {
     "name": "submit_ingredients",
@@ -170,14 +174,13 @@ MEAL_PLAN_TOOL = {
     },
 }
 
->>>>>>> Stashed changes
 
 def generate_workout_plan(profile: Profile, personal_info: UserPersonalInfo) -> WorkoutPlan:
     """调用 Claude API,返回结构化的 WorkoutPlan"""
 
     user_message = build_user_message(profile, personal_info)
 
-    response = client.messages.create(
+    response = _get_client().messages.create(
         model=MODEL_NAME,
         max_tokens=4096,
         system=PLAN_SYSTEM_PROMPT,
@@ -209,7 +212,7 @@ def generate_chat_reply(
     messages = [{"role": m.role, "content": m.message} for m in history]
     messages.append({"role": "user", "content": message})
 
-    response = client.messages.create(
+    response = _get_client().messages.create(
         model=MODEL_NAME,
         max_tokens=1024,
         system=system_prompt,
@@ -235,7 +238,7 @@ def identify_equipment(
 
     user_message = build_equipment_user_message(personal_info)
 
-    response = client.messages.create(
+    response = _get_client().messages.create(
         model=MODEL_NAME,
         max_tokens=1024,
         system=EQUIPMENT_SYSTEM_PROMPT,
@@ -265,8 +268,6 @@ def identify_equipment(
     raise RuntimeError("Claude 没有返回预期的 tool_use 结果,请检查prompt或API返回内容")
 
 
-<<<<<<< Updated upstream
-=======
 def identify_ingredients(image_url: str) -> IngredientIdentifyResponse:
     """调用 Claude 的 vision 能力识别照片里的食材(比如冰箱内部、菜篮子),返回结构化结果。
 
@@ -276,7 +277,7 @@ def identify_ingredients(image_url: str) -> IngredientIdentifyResponse:
 
     user_message = build_ingredient_user_message()
 
-    response = client.messages.create(
+    response = _get_client().messages.create(
         model=MODEL_NAME,
         max_tokens=1024,
         system=INGREDIENT_SYSTEM_PROMPT,
@@ -319,7 +320,7 @@ def generate_meal_plan(
         profile, available_ingredients, dietary_restrictions, recent_progress
     )
 
-    response = client.messages.create(
+    response = _get_client().messages.create(
         model=MODEL_NAME,
         max_tokens=4096,
         system=MEAL_PLAN_SYSTEM_PROMPT,
@@ -335,7 +336,6 @@ def generate_meal_plan(
     raise RuntimeError("Claude 没有返回预期的 tool_use 结果,请检查prompt或API返回内容")
 
 
->>>>>>> Stashed changes
 def generate_report_summary(stats: ReportStats, profile: Profile, period_type: str) -> str:
     """调用 Claude API,根据已经算好的体重数据(stats)生成一段总结文字。
     注意: 所有数字都是 report_calculator.py 算好的,这里只是让AI把数字"翻译"成人话,
@@ -344,7 +344,7 @@ def generate_report_summary(stats: ReportStats, profile: Profile, period_type: s
 
     user_message = build_report_user_message(stats, profile, period_type)
 
-    response = client.messages.create(
+    response = _get_client().messages.create(
         model=MODEL_NAME,
         max_tokens=512,
         system=REPORT_SYSTEM_PROMPT,

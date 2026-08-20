@@ -2,11 +2,7 @@
 
 This contract keeps Flutter, FastAPI, and the AI integration aligned. JSON field names are case-sensitive and use `camelCase`. Except for `/health`, `/auth/register`, and `/auth/login`, planned endpoints require `Authorization: Bearer <access-token>`.
 
-<<<<<<< Updated upstream
-`GET /health`, authentication, `/users/me`, and weight-record endpoints are implemented. The other endpoints below define the agreed implementation target.
-=======
 `GET /health`, authentication, `/users/me`, weight-record, and all AI endpoints (including the equipment/ingredient scan uploads) are implemented.
->>>>>>> Stashed changes
 
 ## Current endpoint
 
@@ -54,20 +50,13 @@ Request/response data:
     "age": 28,
     "sex": "female",
     "heightCm": 165,
-<<<<<<< Updated upstream
-    "currentWeightKg": 68,
-=======
     "startWeightKg": 68,
->>>>>>> Stashed changes
     "targetWeightKg": 60,
     "goal": "lose_weight",
     "lifestyle": "sedentary desk job",
     "exerciseFrequencyPerWeek": 3,
     "exerciseDurationMinutes": 45,
-<<<<<<< Updated upstream
-=======
     "exerciseHabit": ["dancing", "swimming"],
->>>>>>> Stashed changes
     "exerciseLocation": "home"
   },
   "personalInfo": {
@@ -104,16 +93,6 @@ The authenticated user comes from the bearer token; clients must not select anot
 
 ## AI endpoints
 
-<<<<<<< Updated upstream
-These payloads must remain aligned with Stephanie's AI service.
-
-- `GET /ai/health`
-- `POST /ai/generate-plan` - accepts the full profile/questionnaire object above and returns `planName`, `goal`, `weeklyFrequency`, and `exercises`.
-- `POST /ai/chat` - accepts `message`, ordered `history`, and optional `profile`/`personalInfo`; returns `{ "reply": "string" }`.
-- `POST /ai/report` - accepts `periodType`, profile, and ascending `weightRecords`; returns report metrics, `summary`, and the original weight records.
-
-Exercise response item:
-=======
 Stephanie's AI service (`ai-service/`, contract in `docs/TEAM_INTEGRATION_GUIDE.md` section 4) is vendored into the backend at `backend/app/services/ai/` and wrapped by `backend/app/routers/ai.py` + `backend/app/routers/scans.py`. Flutter's contract with these endpoints is **not** a 1:1 passthrough of the AI service's own request shape — the backend derives the user from the bearer token and loads profile/history/progress data from the database itself, rather than trusting a client-supplied `userId`, `profile`, or `recentProgress`. All of these require `Authorization: Bearer <access-token>`.
 
 - `GET /ai/health`
@@ -125,7 +104,6 @@ Stephanie's AI service (`ai-service/`, contract in `docs/TEAM_INTEGRATION_GUIDE.
 - `POST /ingredients/scan` - `multipart/form-data` with an `image` file field, same constraints as above. Uploads the image, calls the AI, and returns the result. Not persisted yet — see Decision 8 in `docs/DATABASE_SCHEMA_GUIDE.md`.
 
 Exercise response item (part of `/ai/generate-plan`'s `exercises` array, alongside `planId`/`planName`/`goal`/`weeklyFrequency`):
->>>>>>> Stashed changes
 
 ```json
 {
@@ -142,8 +120,6 @@ Exercise response item (part of `/ai/generate-plan`'s `exercises` array, alongsi
 
 Exactly one of `reps` and `duration` has a value. `duration` is measured in seconds.
 
-<<<<<<< Updated upstream
-=======
 `/ai/report` response:
 
 ```json
@@ -216,7 +192,6 @@ Meal plan response:
 
 `estimatedCalories`, `estimatedProteinG`, and `dailyCalorieTarget` are AI estimates, not exact calculations (unlike the report endpoint's weight metrics, which are computed in code). `adjustmentNote` is only populated when the request includes `recentProgress`; otherwise it is `null`. See `docs/TEAM_INTEGRATION_GUIDE.md` for full request formats and field-by-field notes.
 
->>>>>>> Stashed changes
 ## Errors
 
 All planned endpoints use a consistent error body:
@@ -231,12 +206,6 @@ All planned endpoints use a consistent error body:
 
 ## Ownership rules
 
-<<<<<<< Updated upstream
-- Flutter sends and receives the JSON in this document.
-- FastAPI authenticates requests, reads/writes Supabase, stores chat history, and prepares ordered weight records.
-- The AI service generates content but does not authenticate users or write directly to the database.
-=======
 - Flutter sends and receives the JSON in this document, and never calls the AI service directly or holds Supabase Storage credentials.
 - FastAPI authenticates requests, reads/writes Supabase, stores chat history, uploads scan images to Storage, and prepares the profile/weight data every AI call needs.
 - The AI service (vendored at `backend/app/services/ai/`) generates content only. It doesn't authenticate users, doesn't query Supabase, and doesn't decide what counts as "recent progress" — the backend computes that from `weight_records` so a client can't hand the AI made-up numbers.
->>>>>>> Stashed changes

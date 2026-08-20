@@ -3,10 +3,12 @@ import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 import '../../models/ai_models.dart';
 import '../../services/api_service.dart';
+import '../../state/profile_store.dart';
 
 /// 拍照/选图识别健身器材。
 class EquipmentScanScreen extends StatefulWidget {
-  const EquipmentScanScreen({super.key});
+  final ProfileStore? store;
+  const EquipmentScanScreen({super.key, this.store});
 
   @override
   State<EquipmentScanScreen> createState() => _EquipmentScanScreenState();
@@ -32,7 +34,7 @@ class _EquipmentScanScreenState extends State<EquipmentScanScreen> {
     });
 
     try {
-      final result = await _api.identifyEquipment(userId: 'demo-user', imageFile: _imageFile!);
+      final result = await _api.identifyEquipment(userId: 'demo-user', imageFile: _imageFile!, accessToken: widget.store?.accessToken);
       setState(() => _result = result);
     } catch (e) {
       setState(() => _error = "Couldn't identify the equipment. Please try again.");

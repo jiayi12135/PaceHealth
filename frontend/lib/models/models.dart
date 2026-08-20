@@ -1,16 +1,10 @@
 class Profile {
   final String name, sex, goal, lifestyle, exerciseLocation;
   final int age, exerciseFrequencyPerWeek, exerciseDurationMinutes;
-<<<<<<< Updated upstream
-  final double heightCm, currentWeightKg, targetWeightKg;
-  const Profile({required this.name, required this.age, required this.sex, required this.heightCm, required this.currentWeightKg, required this.targetWeightKg, required this.goal, required this.lifestyle, required this.exerciseFrequencyPerWeek, required this.exerciseDurationMinutes, required this.exerciseLocation});
-  Map<String, dynamic> toJson() => {'name': name, 'age': age, 'sex': sex, 'heightCm': heightCm, 'currentWeightKg': currentWeightKg, 'targetWeightKg': targetWeightKg, 'goal': goal, 'lifestyle': lifestyle, 'exerciseFrequencyPerWeek': exerciseFrequencyPerWeek, 'exerciseDurationMinutes': exerciseDurationMinutes, 'exerciseLocation': exerciseLocation};
-=======
   final double heightCm, startWeightKg, targetWeightKg;
   final List<String> exerciseHabit;
   const Profile({required this.name, required this.age, required this.sex, required this.heightCm, required this.startWeightKg, required this.targetWeightKg, required this.goal, required this.lifestyle, required this.exerciseFrequencyPerWeek, required this.exerciseDurationMinutes, this.exerciseHabit = const [], required this.exerciseLocation});
   Map<String, dynamic> toJson() => {'name': name, 'age': age, 'sex': sex, 'heightCm': heightCm, 'startWeightKg': startWeightKg, 'targetWeightKg': targetWeightKg, 'goal': goal, 'lifestyle': lifestyle, 'exerciseFrequencyPerWeek': exerciseFrequencyPerWeek, 'exerciseDurationMinutes': exerciseDurationMinutes, 'exerciseHabit': exerciseHabit, 'exerciseLocation': exerciseLocation};
->>>>>>> Stashed changes
 }
 
 class PersonalInfo {
@@ -37,12 +31,8 @@ class FitnessPlan {
 }
 
 class WeightRecord { final double weightKg; final DateTime recordedAt; const WeightRecord({required this.weightKg, required this.recordedAt}); }
-<<<<<<< Updated upstream
-class Report { final String periodType, summary; final bool hasEnoughData; final double? startWeightKg, endWeightKg, deltaKg, progressToGoalPercent, projectedWeeksToGoal; final List<WeightRecord> weightRecords; const Report({required this.periodType, required this.summary, required this.hasEnoughData, this.startWeightKg, this.endWeightKg, this.deltaKg, this.progressToGoalPercent, this.projectedWeeksToGoal, this.weightRecords = const []}); }
-=======
 // Note: `initialWeightKg` is the weight at the *start of this reporting period*
 // (this week/month), not the same thing as Profile.startWeightKg (the weight when
 // the goal was first set). Don't rename this back to startWeightKg — that name
 // collides with the unrelated Profile field and caused confusion before.
 class Report { final String periodType, summary; final bool hasEnoughData; final double? initialWeightKg, endWeightKg, deltaKg, progressToGoalPercent, projectedWeeksToGoal; final List<WeightRecord> weightRecords; const Report({required this.periodType, required this.summary, required this.hasEnoughData, this.initialWeightKg, this.endWeightKg, this.deltaKg, this.progressToGoalPercent, this.projectedWeeksToGoal, this.weightRecords = const []}); }
->>>>>>> Stashed changes

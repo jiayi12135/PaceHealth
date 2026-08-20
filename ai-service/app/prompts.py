@@ -9,15 +9,9 @@ Prompt 设计。
    多输出废话、或者JSON格式错误导致backend解析失败。
 """
 
-<<<<<<< Updated upstream
-from typing import Optional
-
-from app.models import Profile, UserPersonalInfo
-=======
 from typing import List, Optional
 
 from app.models import Profile, ProgressSummary, UserPersonalInfo
->>>>>>> Stashed changes
 from app.report_calculator import ReportStats
 
 
@@ -179,8 +173,6 @@ def build_report_user_message(stats: ReportStats, profile: Profile, period_type:
 
 请写一段总结文字。
 """
-<<<<<<< Updated upstream
-=======
 
 
 # ---------- 食材识别功能的 prompt ----------
@@ -255,4 +247,3 @@ def build_meal_plan_user_message(
 
 请生成几道涵盖不同餐次的食谱建议(比如早餐、午餐、晚餐,数量按合理需要来,不用凑满一整天),并给出一个大概的每日热量参考值(dailyCalorieTarget),如果无法合理估算就填null。
 """
->>>>>>> Stashed changes

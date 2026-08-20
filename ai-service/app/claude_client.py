@@ -15,9 +15,6 @@ from dotenv import load_dotenv
 
 from typing import List, Optional
 
-<<<<<<< Updated upstream
-from app.models import ChatMessage, EquipmentIdentifyResponse, Profile, UserPersonalInfo, WorkoutPlan
-=======
 from app.models import (
     ChatMessage,
     EquipmentIdentifyResponse,
@@ -28,25 +25,18 @@ from app.models import (
     UserPersonalInfo,
     WorkoutPlan,
 )
->>>>>>> Stashed changes
 from app.prompts import (
     PLAN_SYSTEM_PROMPT,
     REPORT_SYSTEM_PROMPT,
     EQUIPMENT_SYSTEM_PROMPT,
-<<<<<<< Updated upstream
-=======
     INGREDIENT_SYSTEM_PROMPT,
     MEAL_PLAN_SYSTEM_PROMPT,
->>>>>>> Stashed changes
     build_user_message,
     build_chat_system_context,
     build_report_user_message,
     build_equipment_user_message,
-<<<<<<< Updated upstream
-=======
     build_ingredient_user_message,
     build_meal_plan_user_message,
->>>>>>> Stashed changes
 )
 from app.report_calculator import ReportStats
 
@@ -109,8 +99,6 @@ EQUIPMENT_IDENTIFY_TOOL = {
     },
 }
 
-<<<<<<< Updated upstream
-=======
 # 强制 Claude 按这个 schema 返回结果(对应 models.py 里的 IngredientIdentifyResponse)
 INGREDIENT_IDENTIFY_TOOL = {
     "name": "submit_ingredients",
@@ -170,7 +158,6 @@ MEAL_PLAN_TOOL = {
     },
 }
 
->>>>>>> Stashed changes
 
 def generate_workout_plan(profile: Profile, personal_info: UserPersonalInfo) -> WorkoutPlan:
     """调用 Claude API,返回结构化的 WorkoutPlan"""
@@ -265,8 +252,6 @@ def identify_equipment(
     raise RuntimeError("Claude 没有返回预期的 tool_use 结果,请检查prompt或API返回内容")
 
 
-<<<<<<< Updated upstream
-=======
 def identify_ingredients(image_url: str) -> IngredientIdentifyResponse:
     """调用 Claude 的 vision 能力识别照片里的食材(比如冰箱内部、菜篮子),返回结构化结果。
 
@@ -335,7 +320,6 @@ def generate_meal_plan(
     raise RuntimeError("Claude 没有返回预期的 tool_use 结果,请检查prompt或API返回内容")
 
 
->>>>>>> Stashed changes
 def generate_report_summary(stats: ReportStats, profile: Profile, period_type: str) -> str:
     """调用 Claude API,根据已经算好的体重数据(stats)生成一段总结文字。
     注意: 所有数字都是 report_calculator.py 算好的,这里只是让AI把数字"翻译"成人话,

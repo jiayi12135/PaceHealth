@@ -35,11 +35,12 @@ class _AiChatScreenState extends State<AiChatScreen> {
 
     try {
       final reply = await _api.sendChatMessage(
-        userId: 'demo-user', // TODO: 换成真实登录用户的ID(等auth接好之后)
+        userId: 'demo-user', // 真实backend不用这个,从accessToken识别用户
         message: text,
         history: _messages.sublist(0, _messages.length - 1), // 不包含刚发的这条,那条是通过message参数单独传的
         profile: widget.profileStore.profile,
         personalInfo: widget.profileStore.personalInfo,
+        accessToken: widget.profileStore.accessToken,
       );
       setState(() => _messages.add(ChatMessageDto(role: 'assistant', message: reply)));
     } catch (e) {

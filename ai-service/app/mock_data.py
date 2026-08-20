@@ -2,11 +2,7 @@
 
 from datetime import date, timedelta
 
-<<<<<<< Updated upstream
-from app.models import ChatMessage, Profile, UserPersonalInfo, WeightPoint
-=======
 from app.models import ChatMessage, Profile, ProgressSummary, UserPersonalInfo, WeightPoint
->>>>>>> Stashed changes
 
 MOCK_PROFILE = Profile(
     name="Test User",
@@ -52,8 +48,6 @@ MOCK_WEEKLY_WEIGHT_RECORDS = [
 MOCK_INSUFFICIENT_WEIGHT_RECORDS = [
     WeightPoint(weightKg=68.0, recordedAt=_today),
 ]
-<<<<<<< Updated upstream
-=======
 
 # 模拟用户拍照识别出的/手动输入的食材,用来测食谱生成
 MOCK_AVAILABLE_INGREDIENTS = ["鸡蛋", "西红柿", "菠菜", "鸡胸肉", "糙米"]
@@ -66,4 +60,3 @@ MOCK_STALLED_PROGRESS = ProgressSummary(
     deltaKg=0.1,  # 目标是减重,但这周体重几乎没变化甚至略微上升
     progressToGoalPercent=12.0,
 )
->>>>>>> Stashed changes

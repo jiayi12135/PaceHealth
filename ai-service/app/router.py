@@ -17,30 +17,21 @@ from app.models import (
     EquipmentIdentifyRequest,
     EquipmentIdentifyResponse,
     GeneratePlanRequest,
-<<<<<<< Updated upstream
-=======
     IdentifyIngredientsRequest,
     IngredientIdentifyResponse,
     MealPlanRequest,
     MealPlanResponse,
->>>>>>> Stashed changes
     ReportRequest,
     ReportResponse,
     WorkoutPlan,
 )
 from app.claude_client import (
     generate_chat_reply,
-<<<<<<< Updated upstream
-    generate_report_summary,
-    generate_workout_plan,
-    identify_equipment,
-=======
     generate_meal_plan,
     generate_report_summary,
     generate_workout_plan,
     identify_equipment,
     identify_ingredients,
->>>>>>> Stashed changes
 )
 from app.report_calculator import calculate_report_stats
 
@@ -121,8 +112,6 @@ def identify_equipment_endpoint(request: EquipmentIdentifyRequest):
         return result
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"识别器材失败: {str(e)}")
-<<<<<<< Updated upstream
-=======
 
 
 @router.post("/identify-ingredients", response_model=IngredientIdentifyResponse)
@@ -160,4 +149,3 @@ def generate_meal_plan_endpoint(request: MealPlanRequest):
         return result
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"生成食谱失败: {str(e)}")
->>>>>>> Stashed changes

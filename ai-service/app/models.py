@@ -139,8 +139,6 @@ class EquipmentIdentifyResponse(BaseModel):
     safetyNotes: Optional[str] = None  # 使用时的安全注意事项、常见错误
     personalizedWarning: Optional[str] = None  # 如果传了personalInfo,且这个器材可能不适合用户的伤病情况,这里会有提醒;没有顾虑则为null
     notRecognizedMessage: Optional[str] = None  # recognized=False时,给用户的提示(比如"照片不够清楚,请重新拍摄")
-<<<<<<< Updated upstream
-=======
 
 
 # ---------- 食材识别:请求体 ----------
@@ -202,4 +200,3 @@ class MealPlanResponse(BaseModel):
     dailyCalorieTarget: Optional[int] = None  # 根据用户目标粗略估算的每日热量参考值,无法给出合理估算则为null
     recipes: List[Recipe] = Field(default_factory=list)
     adjustmentNote: Optional[str] = None  # 如果传了recentProgress,这里说明这次建议是根据进度做了什么调整;没传progress则为null
->>>>>>> Stashed changes

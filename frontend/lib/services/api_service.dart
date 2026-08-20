@@ -5,7 +5,13 @@ import '../models/models.dart';
 import '../models/profile.dart';
 import '../models/ai_models.dart';
 
-class ApiConfig { static const baseUrl = String.fromEnvironment('PACEHEALTH_API_URL', defaultValue: 'http://localhost:8000'); static const useMockData = true; }
+class SavedProfile {
+  final UserProfile profile;
+  final UserPersonalInfo personalInfo;
+  const SavedProfile({required this.profile, required this.personalInfo});
+}
+
+class ApiConfig { static const baseUrl = String.fromEnvironment('PACEHEALTH_API_URL', defaultValue: 'http://10.0.2.2:8000'); static const useMockData = false; }
 
 class AuthSession {
   final String email;
@@ -34,7 +40,50 @@ class ApiService {
       throw Exception(body['message'] ?? 'Unable to ${register ? 'create your account' : 'sign in'}.');
     }
     final user = body['user'] as Map<String, dynamic>;
-    return AuthSession(email: user['email'] as String, accessToken: body['access_token'] as String?);
+    final token = body['accessToken'] as String?;
+    if (token == null) {
+      // Supabase asked for email confirmation, so there's no session yet — don't
+      // pretend the user is signed in with a token that doesn't exist.
+      throw Exception('Please check your email to confirm your account, then sign in.');
+    }
+    return AuthSession(email: user['email'] as String, accessToken: token);
+  }
+
+  /// 登录后调用一次,看这个用户之前是不是已经填过问卷。已经填过返回资料,没填过(backend
+  /// 返回404 PROFILE_NOT_FOUND)返回null——这种情况下应该引导用户走一遍问卷。
+  Future<SavedProfile?> fetchMyProfile({String? accessToken}) async {
+    if (ApiConfig.useMockData) return null;
+
+    final response = await http.get(
+      Uri.parse('${ApiConfig.baseUrl}/users/me'),
+      headers: {if (accessToken != null) 'Authorization': 'Bearer $accessToken'},
+    );
+    if (response.statusCode == 404) return null;
+    if (response.statusCode != 200) {
+      throw Exception('Could not load your profile (${response.statusCode}): ${response.body}');
+    }
+    final body = jsonDecode(response.body) as Map<String, dynamic>;
+    return SavedProfile(
+      profile: UserProfile.fromJson(body['profile'] as Map<String, dynamic>),
+      personalInfo: UserPersonalInfo.fromJson(body['personalInfo'] as Map<String, dynamic>),
+    );
+  }
+
+  /// 问卷填完后调用,把资料真正存进backend(之前这一步只存在本地,没打这个接口)。
+  Future<void> saveMyProfile({required UserProfile profile, required UserPersonalInfo personalInfo, String? accessToken}) async {
+    if (ApiConfig.useMockData) return;
+
+    final response = await http.put(
+      Uri.parse('${ApiConfig.baseUrl}/users/me'),
+      headers: {
+        'Content-Type': 'application/json',
+        if (accessToken != null) 'Authorization': 'Bearer $accessToken',
+      },
+      body: jsonEncode({'profile': profile.toJson(), 'personalInfo': personalInfo.toJson()}),
+    );
+    if (response.statusCode != 200) {
+      throw Exception('Could not save your profile (${response.statusCode}): ${response.body}');
+    }
   }
 
   Future<FitnessPlan> generatePlan({required String userId, required Profile profile, required PersonalInfo personalInfo}) async => _mockPlan();
@@ -44,12 +93,14 @@ class ApiService {
   /// 发一条消息给AI聊天,拿到回复文字。
   /// history 需要按时间顺序传入之前的对话(最新的消息不用带进history,单独传在message里)。
   /// useMockData=true 时不会真的连backend,直接返回一句假回复,方便没搭好backend之前先把UI做出来测试。
+  /// accessToken 是登录后拿到的bearer token,真实backend用它识别是哪个用户,不需要再传userId/profile。
   Future<String> sendChatMessage({
     required String userId,
     required String message,
     required List<ChatMessageDto> history,
     UserProfile? profile,
     UserPersonalInfo? personalInfo,
+    String? accessToken,
   }) async {
     if (ApiConfig.useMockData) {
       await Future.delayed(const Duration(milliseconds: 500));
@@ -58,14 +109,11 @@ class ApiService {
 
     final response = await http.post(
       Uri.parse('${ApiConfig.baseUrl}/ai/chat'),
-      headers: {'Content-Type': 'application/json'},
-      body: jsonEncode({
-        'userId': userId,
-        'message': message,
-        'history': history.map((m) => m.toJson()).toList(),
-        if (profile != null) 'profile': profile.toJson(),
-        if (personalInfo != null) 'personalInfo': personalInfo.toJson(),
-      }),
+      headers: {
+        'Content-Type': 'application/json',
+        if (accessToken != null) 'Authorization': 'Bearer $accessToken',
+      },
+      body: jsonEncode({'message': message}),
     );
     if (response.statusCode != 200) {
       throw Exception('Chat request failed (${response.statusCode}): ${response.body}');
@@ -73,16 +121,15 @@ class ApiService {
     return (jsonDecode(response.body) as Map<String, dynamic>)['reply'] as String;
   }
 
-  /// 拍照/选图识别健身器材。
-  ///
-  /// 注意: 这里调用的是 Backend 的 `/equipment/scan` 接口(需要 Backend 实现,
-  /// 目前还没做),不是直接调AI服务——因为图片要先上传到Supabase Storage拿到URL,
-  /// 这一步需要Backend的密钥权限,Flutter端不应该直接持有存储的写入权限。
+  /// 拍照/选图识别健身器材,调用Backend的 `/equipment/scan` 接口——因为图片要先上传到
+  /// Supabase Storage拿到URL,这一步需要Backend的密钥权限,Flutter端不应该直接持有存储的写入权限。
   /// Backend拿到图片后自己上传、拿URL、再转发给AI服务的 /ai/identify-equipment。
+  /// accessToken 是登录后拿到的bearer token,真实backend用它识别是哪个用户。
   Future<EquipmentResult> identifyEquipment({
     required String userId,
     required File imageFile,
     UserPersonalInfo? personalInfo,
+    String? accessToken,
   }) async {
     if (ApiConfig.useMockData) {
       await Future.delayed(const Duration(milliseconds: 800));
@@ -90,7 +137,7 @@ class ApiService {
     }
 
     final request = http.MultipartRequest('POST', Uri.parse('${ApiConfig.baseUrl}/equipment/scan'))
-      ..fields['userId'] = userId
+      ..headers.addAll({if (accessToken != null) 'Authorization': 'Bearer $accessToken'})
       ..files.add(await http.MultipartFile.fromPath('image', imageFile.path));
     final streamed = await request.send();
     final response = await http.Response.fromStream(streamed);

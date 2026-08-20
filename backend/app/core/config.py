@@ -16,13 +16,10 @@ class Settings(BaseSettings):
     supabase_url: HttpUrl | None = None
     supabase_secret_key: SecretStr | None = None
     anthropic_api_key: SecretStr | None = None
-<<<<<<< Updated upstream
-=======
     # Supabase Storage bucket that equipment/ingredient photos are uploaded to before
     # their public URL is handed to Claude's vision API. Must be created as a public
     # bucket in the Supabase dashboard (or via the Storage API) ahead of time.
     scan_storage_bucket: str = "scans"
->>>>>>> Stashed changes
 
     model_config = SettingsConfigDict(
         env_file=BACKEND_DIR / ".env",

@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../../state/profile_store.dart';
+import '../auth/login_screen.dart';
 
 class SettingsScreen extends StatefulWidget {
   final ProfileStore store;
@@ -68,8 +69,14 @@ class _SettingsScreenState extends State<SettingsScreen> {
       ),
     );
     if (signOut == true && mounted) {
-      Navigator.of(context).popUntil((route) => route.isFirst);
       widget.store.signOut();
+      // Explicitly navigate instead of relying only on the reactive home-swap in
+      // main.dart — that swap doesn't reliably repaint once routes are pushed on
+      // top of the initial route, which is why "Sign out" looked like a no-op.
+      Navigator.of(context).pushAndRemoveUntil(
+        MaterialPageRoute(builder: (_) => LoginScreen(store: widget.store)),
+        (route) => false,
+      );
     }
   }
 }

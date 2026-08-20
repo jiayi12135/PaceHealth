@@ -30,12 +30,24 @@ class _LoginScreenState extends State<LoginScreen> {
     if (!(_formKey.currentState?.validate() ?? false)) return;
     setState(() => _submitting = true);
     try {
-      final session = await ApiService().authenticate(
+      final api = ApiService();
+      final session = await api.authenticate(
         email: _email.text.trim(),
         password: _password.text,
         register: _registering,
       );
-      if (mounted) widget.store.signIn(session.email);
+      widget.store.signIn(session.email, accessToken: session.accessToken);
+
+      // 登录后看这个用户是不是已经填过问卷,填过的话直接跳过问卷。查失败也不阻断登录,
+      // 顶多是又让他填一次问卷,不是致命错误。
+      try {
+        final saved = await api.fetchMyProfile(accessToken: session.accessToken);
+        if (saved != null && mounted) {
+          widget.store.hydrate(profile: saved.profile, personalInfo: saved.personalInfo);
+        }
+      } catch (_) {
+        // ignore — falls back to showing the questionnaire
+      }
     } catch (error) {
       if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(error.toString().replaceFirst('Exception: ', ''))));
     } finally {

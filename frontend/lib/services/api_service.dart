@@ -7,7 +7,36 @@ import '../models/ai_models.dart';
 
 class ApiConfig { static const baseUrl = String.fromEnvironment('PACEHEALTH_API_URL', defaultValue: 'http://localhost:8000'); static const useMockData = true; }
 
+class AuthSession {
+  final String email;
+  final String? accessToken;
+  const AuthSession({required this.email, this.accessToken});
+}
+
 class ApiService {
+  Future<AuthSession> authenticate({
+    required String email,
+    required String password,
+    required bool register,
+  }) async {
+    if (ApiConfig.useMockData) {
+      await Future.delayed(const Duration(milliseconds: 450));
+      return AuthSession(email: email);
+    }
+
+    final response = await http.post(
+      Uri.parse('${ApiConfig.baseUrl}/auth/${register ? 'register' : 'login'}'),
+      headers: {'Content-Type': 'application/json'},
+      body: jsonEncode({'email': email, 'password': password}),
+    );
+    final body = jsonDecode(response.body) as Map<String, dynamic>;
+    if (response.statusCode < 200 || response.statusCode >= 300) {
+      throw Exception(body['message'] ?? 'Unable to ${register ? 'create your account' : 'sign in'}.');
+    }
+    final user = body['user'] as Map<String, dynamic>;
+    return AuthSession(email: user['email'] as String, accessToken: body['access_token'] as String?);
+  }
+
   Future<FitnessPlan> generatePlan({required String userId, required Profile profile, required PersonalInfo personalInfo}) async => _mockPlan();
   Future<Report> getReport({required String periodType, required Profile profile}) async => _mockReport(periodType);
   Future<void> addWeightRecord(WeightRecord record) async {}
@@ -76,11 +105,7 @@ class ApiService {
     Exercise(day: 'Day 1', exerciseName: 'Dead Bug', sets: 3, reps: 10, restSeconds: 45, reason: 'Strengthen your core and support better posture.'),
     Exercise(day: 'Day 2', exerciseName: 'Brisk Walk', sets: 1, duration: 1200, restSeconds: 0, reason: 'A sustainable cardio session matched to your current fitness level.'),
   ]);
-<<<<<<< Updated upstream
-  Report _mockReport(String period) => Report(periodType: period, summary: 'You are building a consistent routine. Keep recording your weight to make your progress trend more meaningful.', hasEnoughData: true, startWeightKg: 68, endWeightKg: 67.2, deltaKg: -.8, progressToGoalPercent: 10, projectedWeeksToGoal: 7.7, weightRecords: [WeightRecord(weightKg: 68, recordedAt: DateTime.now().subtract(const Duration(days: 7))), WeightRecord(weightKg: 67.2, recordedAt: DateTime.now())]);
-=======
   Report _mockReport(String period) => Report(periodType: period, summary: 'You are building a consistent routine. Keep recording your weight to make your progress trend more meaningful.', hasEnoughData: true, initialWeightKg: 68, endWeightKg: 67.2, deltaKg: -.8, progressToGoalPercent: 10, projectedWeeksToGoal: 7.7, weightRecords: [WeightRecord(weightKg: 68, recordedAt: DateTime.now().subtract(const Duration(days: 7))), WeightRecord(weightKg: 67.2, recordedAt: DateTime.now())]);
->>>>>>> Stashed changes
 
   String _mockChatReply(String message) {
     if (message.contains('？') || message.contains('?')) {

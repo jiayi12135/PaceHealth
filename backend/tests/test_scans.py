@@ -6,7 +6,8 @@ from app.dependencies.auth import get_current_user
 from app.main import app
 from app.schemas.auth import AuthUser
 from app.schemas.user import PersonalInfoData, ProfileData, UserProfileResponse
-from app.services.ai.models import DetectedIngredient, EquipmentIdentifyResponse, IngredientIdentifyResponse
+from app.services.ai.models import DetectedIngredient, EquipmentIdentifyResponse, FoodScanResult, IngredientIdentifyResponse
+from app.services.food_scan_service import get_food_scan_service
 from app.services.profile_service import get_profile_service
 from app.services.scan_service import get_equipment_scan_service
 from app.services.storage_service import StorageService, get_storage_service
@@ -136,3 +137,81 @@ class TestIngredientScan:
         body = response.json()
         assert body["ingredients"][0]["name"] == "egg"
         mock_identify.assert_called_once_with(PUBLIC_URL)
+
+
+class TestFoodScan:
+    def teardown_method(self) -> None:
+        app.dependency_overrides.clear()
+
+    def test_uploads_estimates_and_saves(self) -> None:
+        _override_auth()
+        storage_service = Mock()
+        storage_service.upload_image.return_value = PUBLIC_URL
+        scan_service = Mock()
+        scan_service.save.return_value = {"id": "scan-1", "created_at": "2026-08-21T10:00:00+00:00"}
+        app.dependency_overrides[get_storage_service] = lambda: storage_service
+        app.dependency_overrides[get_food_scan_service] = lambda: scan_service
+
+        ai_result = FoodScanResult(
+            recognized=True,
+            confidence=0.8,
+            foodName="Chicken salad bowl",
+            description="Grilled chicken over greens.",
+            portionEstimate="One medium bowl, ~350g",
+            estimatedCalories=420,
+            estimatedProteinG=35.0,
+            estimatedCarbsG=20.0,
+            estimatedFatG=18.0,
+            notRecognizedMessage=None,
+        )
+
+        with patch("app.routers.scans.estimate_food", return_value=ai_result) as mock_estimate:
+            response = TestClient(app).post(
+                "/food/scan",
+                files={"image": ("lunch.jpg", FAKE_IMAGE_BYTES, "image/jpeg")},
+            )
+
+        assert response.status_code == 200
+        body = response.json()
+        assert body["foodName"] == "Chicken salad bowl"
+        assert body["estimatedCalories"] == 420
+        assert body["scanId"] == "scan-1"
+
+        mock_estimate.assert_called_once_with(PUBLIC_URL)
+        scan_service.save.assert_called_once_with(USER_ID, PUBLIC_URL, ai_result)
+
+    def test_today_log_sums_calories(self) -> None:
+        _override_auth()
+        scan_service = Mock()
+        scan_service.list_for_day.return_value = [
+            {
+                "id": "scan-1",
+                "food_name": "Oatmeal",
+                "confidence": 0.9,
+                "estimated_calories": 300,
+                "estimated_protein_g": 10.0,
+                "estimated_carbs_g": 50.0,
+                "estimated_fat_g": 5.0,
+                "ai_result": {"description": "Bowl of oatmeal", "portionEstimate": "1 bowl", "notRecognizedMessage": None},
+                "created_at": "2026-08-21T08:00:00+00:00",
+            },
+            {
+                "id": "scan-2",
+                "food_name": "Salad",
+                "confidence": 0.85,
+                "estimated_calories": 250,
+                "estimated_protein_g": 8.0,
+                "estimated_carbs_g": 20.0,
+                "estimated_fat_g": 10.0,
+                "ai_result": {"description": "Green salad", "portionEstimate": "1 plate", "notRecognizedMessage": None},
+                "created_at": "2026-08-21T12:00:00+00:00",
+            },
+        ]
+        app.dependency_overrides[get_food_scan_service] = lambda: scan_service
+
+        response = TestClient(app).get("/food/scans/today")
+
+        assert response.status_code == 200
+        body = response.json()
+        assert body["totalCalories"] == 550
+        assert len(body["scans"]) == 2

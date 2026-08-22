@@ -1,4 +1,5 @@
 import 'package:flutter/foundation.dart';
+import '../models/models.dart';
 import '../models/profile.dart';
 class ProfileStore extends ChangeNotifier {
   UserProfile profile = UserProfile();
@@ -7,6 +8,9 @@ class ProfileStore extends ChangeNotifier {
   bool signedIn = false;
   String email = '';
   String? accessToken;
+  // 问卷完成后自动生成的workout plan,先只存内存里(demo阶段够用)。
+  // app重启会丢失——如果以后要跨设备/重启都保留,backend需要加一个GET最新plan的接口。
+  FitnessPlan? plan;
 
   void signIn(String value, {String? accessToken}) {
     email = value.trim();
@@ -22,6 +26,12 @@ class ProfileStore extends ChangeNotifier {
     accessToken = null;
     profile = UserProfile();
     personalInfo = UserPersonalInfo();
+    plan = null;
+    notifyListeners();
+  }
+
+  void setPlan(FitnessPlan? value) {
+    plan = value;
     notifyListeners();
   }
 

@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 
 import '../../state/profile_store.dart';
 import '../../services/api_service.dart';
+import '../navigation/app_shell.dart';
+import '../onboarding/questionnaire_screen.dart';
 
 class LoginScreen extends StatefulWidget {
   final ProfileStore store;
@@ -47,6 +49,21 @@ class _LoginScreenState extends State<LoginScreen> {
         }
       } catch (_) {
         // ignore — falls back to showing the questionnaire
+      }
+
+      // 不能只靠main.dart里那个根据store状态反应式切换MaterialApp.home的逻辑——
+      // 这里signIn()先notify了一次(这时completed还是false,如果只看这次通知会先
+      // 跳去问卷),hydrate()是在await拿到profile之后才notify的第二次,但这时候
+      // Navigator已经把第一次的那个route显示出来了,单纯改MaterialApp.home不会
+      // 再把它换掉(跟之前"退出登录没反应"是同一个坑)。所以登录这一步结束后,
+      // 用确定的store状态显式导航一次,不依赖reactive rebuild。
+      if (mounted) {
+        Navigator.of(context).pushAndRemoveUntil(
+          MaterialPageRoute(
+            builder: (_) => widget.store.completed ? AppShell(store: widget.store) : QuestionnaireScreen(store: widget.store),
+          ),
+          (route) => false,
+        );
       }
     } catch (error) {
       if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(error.toString().replaceFirst('Exception: ', ''))));

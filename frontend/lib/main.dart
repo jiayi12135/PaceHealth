@@ -3,6 +3,7 @@ import 'state/profile_store.dart';
 import 'screens/auth/login_screen.dart';
 import 'screens/onboarding/questionnaire_screen.dart';
 import 'screens/navigation/app_shell.dart';
+import 'theme.dart';
 
 void main() => runApp(PaceHealthApp(store: ProfileStore()));
 
@@ -14,7 +15,7 @@ class PaceHealthApp extends StatelessWidget {
     animation: store,
     builder: (_, __) => MaterialApp(
       title: 'PaceHealth',
-      theme: ThemeData(useMaterial3: true, colorSchemeSeed: const Color(0xff287d68), scaffoldBackgroundColor: const Color(0xfff6faf8), cardTheme: const CardThemeData(elevation: 0, margin: EdgeInsets.zero)),
+      theme: paceHealthTheme,
       home: !store.signedIn
           ? LoginScreen(store: store)
           : store.completed

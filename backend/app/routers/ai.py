@@ -32,6 +32,7 @@ from app.services.ai.claude_client import (
     generate_workout_plan,
 )
 from app.services.ai.models import ProgressSummary
+from app.services.exercise_image_service import fetch_exercise_image_urls
 from app.services.ai_bridge import (
     compute_report_stats,
     to_ai_personal_info,
@@ -93,7 +94,15 @@ def generate_plan(
     except PostgrestAPIError as exc:
         raise APIError(502, "Generated the plan but failed to save it.", "PLAN_WRITE_FAILED") from exc
 
-    return to_workout_plan_response(plan_id, plan)
+    # Best-effort — a Pexels hiccup should never fail an otherwise-successful
+    # plan generation, so guard this even though fetch_exercise_image_urls
+    # already catches its own errors internally.
+    try:
+        images = fetch_exercise_image_urls(exercise.exerciseName for exercise in plan.exercises)
+    except Exception:  # noqa: BLE001
+        images = {}
+
+    return to_workout_plan_response(plan_id, plan, images)
 
 
 @router.post("/chat", response_model=ChatResponse)
@@ -102,6 +111,7 @@ def chat(
     user: Annotated[AuthUser, Depends(get_current_user)],
     profiles: Annotated[ProfileService, Depends(get_profile_service)],
     chats: Annotated[ChatService, Depends(get_chat_service)],
+    weights: Annotated[WeightService, Depends(get_weight_service)],
 ) -> ChatResponse:
     # Unlike generate-plan/report, chat works without a saved profile — it just
     # can't give personalized advice yet (mirrors ai-service's own behavior).
@@ -115,12 +125,31 @@ def chat(
     except PostgrestAPIError as exc:
         raise APIError(502, "Unable to load chat history.", "CHAT_HISTORY_READ_FAILED") from exc
 
+    # Same constraint data that feeds generate-plan/equipment-scan/report also feeds
+    # chat: equipment + injuries via to_ai_personal_info (already used below), and
+    # this week's weight progress computed the same way /ai/report and the meal-plan
+    # endpoint's recentProgress do — one consistent context, not a separate copy per
+    # feature. Best-effort: if weight data can't be loaded, chat still works without it.
+    recent_progress = None
+    if profile is not None:
+        try:
+            _, _, _, stats = compute_report_stats(weights, profile.profile, user.user_id, "weekly")
+            if stats.has_enough_data:
+                recent_progress = ProgressSummary(
+                    periodType="weekly",
+                    deltaKg=stats.delta_kg,
+                    progressToGoalPercent=stats.progress_to_goal_percent,
+                )
+        except PostgrestAPIError:
+            pass
+
     try:
         reply = generate_chat_reply(
             payload.message,
             history,
             to_ai_profile(profile.profile) if profile else None,
             to_ai_personal_info(profile.personal_info) if profile else None,
+            recent_progress,
         )
     except APIError:
         raise

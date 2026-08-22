@@ -86,7 +86,23 @@ class ApiService {
     }
   }
 
-  Future<FitnessPlan> generatePlan({required String userId, required Profile profile, required PersonalInfo personalInfo}) async => _mockPlan();
+  /// 问卷填完后调用一次,让backend根据这个用户的profile+personalInfo(伤病/器材等)
+  /// 生成一份workout plan并存下来。backend从token认用户,不需要也不接受client传profile/personalInfo。
+  Future<FitnessPlan> generatePlan({String? accessToken}) async {
+    if (ApiConfig.useMockData) {
+      await Future.delayed(const Duration(milliseconds: 600));
+      return _mockPlan();
+    }
+
+    final response = await http.post(
+      Uri.parse('${ApiConfig.baseUrl}/ai/generate-plan'),
+      headers: {if (accessToken != null) 'Authorization': 'Bearer $accessToken'},
+    );
+    if (response.statusCode != 201 && response.statusCode != 200) {
+      throw Exception('Could not generate your plan (${response.statusCode}): ${response.body}');
+    }
+    return FitnessPlan.fromJson(jsonDecode(response.body) as Map<String, dynamic>);
+  }
   Future<Report> getReport({required String periodType, required Profile profile}) async => _mockReport(periodType);
   Future<void> addWeightRecord(WeightRecord record) async {}
 
@@ -145,6 +161,73 @@ class ApiService {
       throw Exception('Equipment scan failed (${response.statusCode}): ${response.body}');
     }
     return EquipmentResult.fromJson(jsonDecode(response.body) as Map<String, dynamic>);
+  }
+
+  /// 拍照/选图识别食材(冰箱/菜篮子),调用Backend的 `/ingredients/scan` 接口,跟
+  /// identifyEquipment走一样的上传+auth流程。
+  Future<IngredientScanResult> identifyIngredients({required File imageFile, String? accessToken}) async {
+    if (ApiConfig.useMockData) {
+      await Future.delayed(const Duration(milliseconds: 800));
+      return const IngredientScanResult(recognized: true, confidence: 0.85, ingredients: [
+        DetectedIngredient(name: 'Egg', quantity: '6'),
+        DetectedIngredient(name: 'Tomato', quantity: '3'),
+      ]);
+    }
+
+    final request = http.MultipartRequest('POST', Uri.parse('${ApiConfig.baseUrl}/ingredients/scan'))
+      ..headers.addAll({if (accessToken != null) 'Authorization': 'Bearer $accessToken'})
+      ..files.add(await http.MultipartFile.fromPath('image', imageFile.path));
+    final streamed = await request.send();
+    final response = await http.Response.fromStream(streamed);
+    if (response.statusCode != 200) {
+      throw Exception('Ingredient scan failed (${response.statusCode}): ${response.body}');
+    }
+    return IngredientScanResult.fromJson(jsonDecode(response.body) as Map<String, dynamic>);
+  }
+
+  /// 拍照/选图估算食物热量,调用Backend的 `/food/scan` 接口,用于Nutrition页面记录每日饮食。
+  Future<FoodScanResult> scanFood({required File imageFile, String? accessToken}) async {
+    if (ApiConfig.useMockData) {
+      await Future.delayed(const Duration(milliseconds: 800));
+      return const FoodScanResult(
+        recognized: true,
+        confidence: 0.8,
+        foodName: 'Chicken salad bowl',
+        description: 'Grilled chicken breast over mixed greens with a light dressing.',
+        portionEstimate: 'One medium bowl, about 350g',
+        estimatedCalories: 420,
+        estimatedProteinG: 35,
+        estimatedCarbsG: 20,
+        estimatedFatG: 18,
+      );
+    }
+
+    final request = http.MultipartRequest('POST', Uri.parse('${ApiConfig.baseUrl}/food/scan'))
+      ..headers.addAll({if (accessToken != null) 'Authorization': 'Bearer $accessToken'})
+      ..files.add(await http.MultipartFile.fromPath('image', imageFile.path));
+    final streamed = await request.send();
+    final response = await http.Response.fromStream(streamed);
+    if (response.statusCode != 200) {
+      throw Exception('Food scan failed (${response.statusCode}): ${response.body}');
+    }
+    return FoodScanResult.fromJson(jsonDecode(response.body) as Map<String, dynamic>);
+  }
+
+  /// 今日已经记录的食物列表+总热量,给Nutrition页面用。
+  Future<DailyFoodLog> fetchTodayFoodLog({String? accessToken}) async {
+    if (ApiConfig.useMockData) {
+      await Future.delayed(const Duration(milliseconds: 400));
+      return const DailyFoodLog(date: '', totalCalories: 0, scans: []);
+    }
+
+    final response = await http.get(
+      Uri.parse('${ApiConfig.baseUrl}/food/scans/today'),
+      headers: {if (accessToken != null) 'Authorization': 'Bearer $accessToken'},
+    );
+    if (response.statusCode != 200) {
+      throw Exception('Could not load today\'s food log (${response.statusCode}): ${response.body}');
+    }
+    return DailyFoodLog.fromJson(jsonDecode(response.body) as Map<String, dynamic>);
   }
 
   FitnessPlan _mockPlan() => const FitnessPlan(planName: 'Your balanced starter plan', goal: 'lose_weight', weeklyFrequency: 3, exercises: [

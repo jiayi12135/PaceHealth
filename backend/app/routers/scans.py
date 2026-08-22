@@ -5,6 +5,7 @@ Flutter must never hold, per docs/DATABASE_SCHEMA_GUIDE.md's security design),
 and only then calls the AI service with the resulting URL.
 """
 
+from datetime import datetime, timezone
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, UploadFile
@@ -12,10 +13,17 @@ from postgrest.exceptions import APIError as PostgrestAPIError
 
 from app.dependencies.auth import get_current_user
 from app.errors import APIError
-from app.schemas.ai import EquipmentScanResponse, IngredientScanResponse
+from app.schemas.ai import DailyFoodLogResponse, EquipmentScanResponse, FoodScanResponse, IngredientScanResponse
 from app.schemas.auth import AuthUser
-from app.services.ai.claude_client import identify_equipment, identify_ingredients
-from app.services.ai_bridge import to_ai_personal_info, to_equipment_scan_response, to_ingredient_scan_response
+from app.services.ai.claude_client import estimate_food, identify_equipment, identify_ingredients
+from app.services.ai_bridge import (
+    to_ai_personal_info,
+    to_equipment_scan_response,
+    to_food_scan_response,
+    to_ingredient_scan_response,
+)
+from app.services.ai.models import FoodScanResult
+from app.services.food_scan_service import FoodScanService, get_food_scan_service
 from app.services.profile_service import ProfileService, get_profile_service
 from app.services.scan_service import EquipmentScanService, get_equipment_scan_service
 from app.services.storage_service import StorageService, UnsupportedImageTypeError, get_storage_service
@@ -102,3 +110,65 @@ async def scan_ingredients(
         raise APIError(502, "The AI service failed to identify the ingredients.", "AI_REQUEST_FAILED") from exc
 
     return to_ingredient_scan_response(result)
+
+
+@router.post("/food/scan", response_model=FoodScanResponse)
+async def scan_food(
+    image: UploadFile,
+    user: Annotated[AuthUser, Depends(get_current_user)],
+    storage: Annotated[StorageService, Depends(get_storage_service)],
+    scans: Annotated[FoodScanService, Depends(get_food_scan_service)],
+) -> FoodScanResponse:
+    """Photo of a meal -> estimated calories/macros, logged for the Nutrition tab."""
+    image_url = await _read_and_upload_image(image, storage, user.user_id)
+
+    try:
+        result: FoodScanResult = estimate_food(image_url)
+    except APIError:
+        raise
+    except Exception as exc:
+        raise APIError(502, "The AI service failed to estimate this food scan.", "AI_REQUEST_FAILED") from exc
+
+    try:
+        row = scans.save(user.user_id, image_url, result)
+    except PostgrestAPIError as exc:
+        raise APIError(502, "Estimated the food but failed to save the scan.", "SCAN_WRITE_FAILED") from exc
+
+    return to_food_scan_response(result, scan_id=row["id"], scanned_at=row["created_at"])
+
+
+@router.get("/food/scans/today", response_model=DailyFoodLogResponse)
+def get_today_food_log(
+    user: Annotated[AuthUser, Depends(get_current_user)],
+    scans: Annotated[FoodScanService, Depends(get_food_scan_service)],
+) -> DailyFoodLogResponse:
+    """Today's logged food scans + running calorie total, for the Nutrition tab."""
+    try:
+        rows = scans.list_for_day(user.user_id)
+    except PostgrestAPIError as exc:
+        raise APIError(502, "Unable to load today's food log.", "FOOD_LOG_READ_FAILED") from exc
+
+    responses = [
+        FoodScanResponse(
+            scan_id=row["id"],
+            recognized=row["food_name"] is not None,
+            confidence=row["confidence"] or 0.0,
+            food_name=row["food_name"],
+            description=(row.get("ai_result") or {}).get("description"),
+            portion_estimate=(row.get("ai_result") or {}).get("portionEstimate"),
+            estimated_calories=row["estimated_calories"],
+            estimated_protein_g=row["estimated_protein_g"],
+            estimated_carbs_g=row["estimated_carbs_g"],
+            estimated_fat_g=row["estimated_fat_g"],
+            not_recognized_message=(row.get("ai_result") or {}).get("notRecognizedMessage"),
+            scanned_at=row["created_at"],
+        )
+        for row in rows
+    ]
+    total_calories = sum(r.estimated_calories or 0 for r in responses)
+
+    return DailyFoodLogResponse(
+        date=datetime.now(timezone.utc).date().isoformat(),
+        total_calories=total_calories,
+        scans=responses,
+    )

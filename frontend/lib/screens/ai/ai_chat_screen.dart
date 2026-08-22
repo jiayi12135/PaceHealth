@@ -4,6 +4,8 @@ import '../../models/ai_models.dart';
 import '../../services/api_service.dart';
 import '../../state/ai_assistant_store.dart';
 import '../../state/profile_store.dart';
+import '../equipment/equipment_scan_screen.dart';
+import '../ingredients/ingredient_scan_screen.dart';
 
 /// AI聊天页面。用户点悬浮气泡后打开这个页面。
 class AiChatScreen extends StatefulWidget {
@@ -51,6 +53,39 @@ class _AiChatScreenState extends State<AiChatScreen> {
     }
   }
 
+  /// 相机按钮:弹出一个选择框,问用户想识别器材还是食材,然后跳转到对应的拍照页面。
+  Future<void> _openPhotoPicker() async {
+    final choice = await showModalBottomSheet<String>(
+      context: context,
+      builder: (context) => SafeArea(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            ListTile(
+              leading: const Icon(Icons.fitness_center),
+              title: const Text('Identify equipment'),
+              subtitle: const Text('Scan a photo of a gym machine or equipment'),
+              onTap: () => Navigator.pop(context, 'equipment'),
+            ),
+            ListTile(
+              leading: const Icon(Icons.kitchen_outlined),
+              title: const Text('Identify ingredients'),
+              subtitle: const Text('Scan a photo of your fridge or ingredients'),
+              onTap: () => Navigator.pop(context, 'ingredients'),
+            ),
+          ],
+        ),
+      ),
+    );
+
+    if (choice == null || !mounted) return;
+    if (choice == 'equipment') {
+      Navigator.push(context, MaterialPageRoute(builder: (_) => EquipmentScanScreen(store: widget.profileStore)));
+    } else {
+      Navigator.push(context, MaterialPageRoute(builder: (_) => IngredientScanScreen(store: widget.profileStore)));
+    }
+  }
+
   void _scrollToBottom() {
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (_scrollController.hasClients) {
@@ -93,6 +128,7 @@ class _AiChatScreenState extends State<AiChatScreen> {
               padding: const EdgeInsets.fromLTRB(12, 4, 12, 12),
               child: Row(
                 children: [
+                  IconButton(onPressed: _sending ? null : _openPhotoPicker, icon: const Icon(Icons.camera_alt_outlined), tooltip: 'Scan a photo'),
                   Expanded(
                     child: TextField(
                       controller: _controller,

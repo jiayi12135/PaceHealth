@@ -102,6 +102,20 @@ create table if not exists public.equipment_scans (
     created_at timestamptz not null default now()
 );
 
+create table if not exists public.food_scans (
+    id uuid primary key default gen_random_uuid(),
+    user_id uuid not null references auth.users(id) on delete cascade,
+    image_url text not null,
+    food_name text,
+    confidence numeric(5, 4) check (confidence between 0 and 1),
+    estimated_calories integer,
+    estimated_protein_g numeric(6, 2),
+    estimated_carbs_g numeric(6, 2),
+    estimated_fat_g numeric(6, 2),
+    ai_result jsonb,
+    created_at timestamptz not null default now()
+);
+
 create table if not exists public.workout_completions (
     id uuid primary key default gen_random_uuid(),
     user_id uuid not null references auth.users(id) on delete cascade,
@@ -116,6 +130,7 @@ create index if not exists weight_records_user_date_idx on public.weight_records
 create index if not exists chat_records_user_created_idx on public.chat_records(user_id, created_at);
 create index if not exists reports_user_period_idx on public.reports(user_id, period_type, period_start);
 create index if not exists equipment_scans_user_created_idx on public.equipment_scans(user_id, created_at);
+create index if not exists food_scans_user_created_idx on public.food_scans(user_id, created_at);
 create index if not exists workout_completions_user_created_idx on public.workout_completions(user_id, completed_at);
 
 -- Secure by default: only the FastAPI backend's secret key may access these tables.
@@ -128,4 +143,5 @@ alter table public.weight_records enable row level security;
 alter table public.chat_records enable row level security;
 alter table public.reports enable row level security;
 alter table public.equipment_scans enable row level security;
+alter table public.food_scans enable row level security;
 alter table public.workout_completions enable row level security;

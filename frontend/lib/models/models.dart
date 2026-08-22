@@ -18,16 +18,20 @@ class Exercise {
   final int sets, restSeconds;
   final int? reps, duration;
   final String? videoUrl;
-  const Exercise({required this.day, required this.exerciseName, required this.sets, this.reps, this.duration, required this.restSeconds, required this.reason, this.videoUrl});
-  factory Exercise.fromJson(Map<String, dynamic> j) => Exercise(day: j['day'], exerciseName: j['exerciseName'], sets: j['sets'], reps: j['reps'], duration: j['duration'], restSeconds: j['restSeconds'], reason: j['reason'] ?? '', videoUrl: j['videoUrl']);
+  // 从Pexels按动作名搜到的缩略图,可能是null(没配key/没搜到/请求失败都会是null)——
+  // UI这边要有图标兜底,不能假设这个字段一定有值。
+  final String? imageUrl;
+  const Exercise({required this.day, required this.exerciseName, required this.sets, this.reps, this.duration, required this.restSeconds, required this.reason, this.videoUrl, this.imageUrl});
+  factory Exercise.fromJson(Map<String, dynamic> j) => Exercise(day: j['day'], exerciseName: j['exerciseName'], sets: j['sets'], reps: j['reps'], duration: j['duration'], restSeconds: j['restSeconds'], reason: j['reason'] ?? '', videoUrl: j['videoUrl'], imageUrl: j['imageUrl']);
 }
 
 class FitnessPlan {
+  final String? planId;
   final String planName, goal;
   final int weeklyFrequency;
   final List<Exercise> exercises;
-  const FitnessPlan({required this.planName, required this.goal, required this.weeklyFrequency, required this.exercises});
-  factory FitnessPlan.fromJson(Map<String, dynamic> j) => FitnessPlan(planName: j['planName'], goal: j['goal'], weeklyFrequency: j['weeklyFrequency'], exercises: (j['exercises'] as List).map((e) => Exercise.fromJson(e)).toList());
+  const FitnessPlan({this.planId, required this.planName, required this.goal, required this.weeklyFrequency, required this.exercises});
+  factory FitnessPlan.fromJson(Map<String, dynamic> j) => FitnessPlan(planId: j['planId'] as String?, planName: j['planName'], goal: j['goal'], weeklyFrequency: j['weeklyFrequency'], exercises: (j['exercises'] as List).map((e) => Exercise.fromJson(e)).toList());
 }
 
 class WeightRecord { final double weightKg; final DateTime recordedAt; const WeightRecord({required this.weightKg, required this.recordedAt}); }

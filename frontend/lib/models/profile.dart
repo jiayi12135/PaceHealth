@@ -7,7 +7,7 @@ class UserProfile {
   /// Backend的 `exerciseHabit` 是字符串数组(见 docs/API_CONTRACT.md),但这里的问卷UI目前
   /// 只做单选,所以存成单个String。发请求时包成数组,收到数组时用逗号拼回字符串——
   /// 这是个已知的简化,以后要支持多选的话得把这个字段也改成List<String>。
-  Map<String, dynamic> toJson() => {'name': name, 'age': age, 'sex': sex, 'heightCm': heightCm, 'startWeightKg': startWeightKg, 'targetWeightKg': targetWeightKg, 'goal': goal, 'lifestyle': lifestyle, 'exerciseFrequencyPerWeek': exerciseFrequencyPerWeek, 'exerciseDurationMinutes': exerciseDurationMinutes, 'exerciseHabit': exerciseHabit.isEmpty ? <String>[] : [exerciseHabit], 'exerciseLocation': exerciseLocation};
+  Map<String, dynamic> toJson() => {'name': name, 'age': age, 'sex': sex, 'heightCm': heightCm, 'startWeightKg': startWeightKg, 'targetWeightKg': targetWeightKg, 'goal': goal, 'lifestyle': lifestyle, 'exerciseFrequencyPerWeek': exerciseFrequencyPerWeek, 'exerciseDurationMinutes': exerciseDurationMinutes, 'exerciseHabit': exerciseHabit.isEmpty ? <String>[] : exerciseHabit.split(',').map((e) => e.trim()).where((e) => e.isNotEmpty).toList(), 'exerciseLocation': exerciseLocation};
 
   factory UserProfile.fromJson(Map<String, dynamic> json) => UserProfile(
         name: json['name'] as String? ?? '',

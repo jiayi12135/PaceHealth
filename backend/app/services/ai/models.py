@@ -200,3 +200,20 @@ class MealPlanResponse(BaseModel):
     dailyCalorieTarget: Optional[int] = None  # 根据用户目标粗略估算的每日热量参考值,无法给出合理估算则为null
     recipes: List[Recipe] = Field(default_factory=list)
     adjustmentNote: Optional[str] = None  # 如果传了recentProgress,这里说明这次建议是根据进度做了什么调整;没传progress则为null
+
+
+# ---------- 食物拍照估算热量:返回体 ----------
+# 跟识别食材(冰箱/菜篮子里的生食材)不一样,这个看的是一份已经做好、准备吃/正在吃的
+# 餐食照片,用于Nutrition页面的每日热量记录,不需要请求体模型——跟identify_ingredients
+# 一样,只需要一个图片URL,直接作为函数参数传给claude_client,不单独定义Request类。
+class FoodScanResult(BaseModel):
+    recognized: bool  # False表示照片看不出是食物,或者完全无法辨认
+    confidence: float  # 0到1之间,对这次识别+估算的把握程度
+    foodName: Optional[str] = None  # 识别出的食物/菜品名称,recognized为false时为null
+    description: Optional[str] = None  # 简短描述这是什么食物
+    portionEstimate: Optional[str] = None  # 估算热量时假设的大概份量描述,比如"一碗约300g"
+    estimatedCalories: Optional[int] = None  # 大概热量估算(kcal),无法合理估算则为null
+    estimatedProteinG: Optional[float] = None
+    estimatedCarbsG: Optional[float] = None
+    estimatedFatG: Optional[float] = None
+    notRecognizedMessage: Optional[str] = None  # recognized为false时,给用户的提示

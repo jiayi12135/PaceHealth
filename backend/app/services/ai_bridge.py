@@ -11,6 +11,7 @@ from app.schemas.ai import (
     DetectedIngredientResponse,
     EquipmentScanResponse,
     ExerciseResponse,
+    FoodScanResponse,
     IngredientScanResponse,
     MealPlanResponse,
     RecipeResponse,
@@ -57,7 +58,15 @@ def to_ai_personal_info(info: PersonalInfoData) -> ai_models.UserPersonalInfo:
     )
 
 
-def to_workout_plan_response(plan_id: str, plan: ai_models.WorkoutPlan) -> WorkoutPlanResponse:
+def to_workout_plan_response(
+    plan_id: str,
+    plan: ai_models.WorkoutPlan,
+    images: dict[str, str | None] | None = None,
+) -> WorkoutPlanResponse:
+    """`images` is optional (exercise_name -> photo URL or None) so callers that
+    don't care about thumbnails — like existing tests — don't need to fake one.
+    """
+    images = images or {}
     return WorkoutPlanResponse(
         plan_id=plan_id,
         plan_name=plan.planName,
@@ -73,6 +82,7 @@ def to_workout_plan_response(plan_id: str, plan: ai_models.WorkoutPlan) -> Worko
                 rest_seconds=exercise.restSeconds,
                 reason=exercise.reason,
                 video_url=exercise.videoUrl,
+                image_url=images.get(exercise.exerciseName),
             )
             for exercise in plan.exercises
         ],
@@ -169,4 +179,26 @@ def to_ingredient_scan_response(result: ai_models.IngredientIdentifyResponse) ->
             DetectedIngredientResponse(name=item.name, quantity=item.quantity) for item in result.ingredients
         ],
         not_recognized_message=result.notRecognizedMessage,
+    )
+
+
+def to_food_scan_response(
+    result: ai_models.FoodScanResult,
+    *,
+    scan_id: str | None = None,
+    scanned_at: str | None = None,
+) -> FoodScanResponse:
+    return FoodScanResponse(
+        scan_id=scan_id,
+        recognized=result.recognized,
+        confidence=result.confidence,
+        food_name=result.foodName,
+        description=result.description,
+        portion_estimate=result.portionEstimate,
+        estimated_calories=result.estimatedCalories,
+        estimated_protein_g=result.estimatedProteinG,
+        estimated_carbs_g=result.estimatedCarbsG,
+        estimated_fat_g=result.estimatedFatG,
+        not_recognized_message=result.notRecognizedMessage,
+        scanned_at=scanned_at,
     )

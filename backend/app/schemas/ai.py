@@ -36,6 +36,10 @@ class ExerciseResponse(APIModel):
     rest_seconds: int
     reason: str
     video_url: str | None = None
+    # Best-effort thumbnail from Pexels (app/services/exercise_image_service.py),
+    # keyed off exercise_name. None if PEXELS_API_KEY isn't set or the lookup
+    # failed/found nothing — the frontend falls back to an icon in that case.
+    image_url: str | None = None
 
 
 class WorkoutPlanResponse(APIModel):
@@ -137,3 +141,27 @@ class IngredientScanResponse(APIModel):
     confidence: float
     ingredients: list[DetectedIngredientResponse]
     not_recognized_message: str | None = None
+
+
+# ---------- food scan (photo -> estimated calories, for the Nutrition tab) ----------
+
+
+class FoodScanResponse(APIModel):
+    scan_id: str | None = None  # None for scans that failed to persist; see routers/scans.py
+    recognized: bool
+    confidence: float
+    food_name: str | None = None
+    description: str | None = None
+    portion_estimate: str | None = None
+    estimated_calories: int | None = None
+    estimated_protein_g: float | None = None
+    estimated_carbs_g: float | None = None
+    estimated_fat_g: float | None = None
+    not_recognized_message: str | None = None
+    scanned_at: str | None = None
+
+
+class DailyFoodLogResponse(APIModel):
+    date: str
+    total_calories: int
+    scans: list[FoodScanResponse]

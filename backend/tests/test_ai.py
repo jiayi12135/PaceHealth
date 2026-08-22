@@ -1,4 +1,5 @@
-from datetime import date
+from datetime import date, timedelta
+from types import SimpleNamespace
 from unittest.mock import Mock, patch
 
 from fastapi.testclient import TestClient
@@ -132,8 +133,11 @@ class TestChat:
             ChatMessage(role="user", message="Hi"),
             ChatMessage(role="assistant", message="Hello! How can I help?"),
         ]
+        weight_service = Mock()
+        weight_service.list.return_value = []
         app.dependency_overrides[get_profile_service] = lambda: profile_service
         app.dependency_overrides[get_chat_service] = lambda: chat_service
+        app.dependency_overrides[get_weight_service] = lambda: weight_service
 
         with patch("app.routers.ai.generate_chat_reply", return_value="Sure, here's a tip.") as mock_chat:
             response = TestClient(app).post("/ai/chat", json={"message": "Any tips for squats?"})
@@ -142,11 +146,13 @@ class TestChat:
         assert response.json() == {"reply": "Sure, here's a tip."}
 
         mock_chat.assert_called_once()
-        message_arg, history_arg, profile_arg, personal_info_arg = mock_chat.call_args.args
+        message_arg, history_arg, profile_arg, personal_info_arg, recent_progress_arg = mock_chat.call_args.args
         assert message_arg == "Any tips for squats?"
         assert len(history_arg) == 2
         assert profile_arg is not None
         assert personal_info_arg is not None
+        # Fewer than 2 weight records this week -> not enough data, so no progress is passed.
+        assert recent_progress_arg is None
 
         chat_service.append_exchange.assert_called_once_with(
             USER_ID, "Any tips for squats?", "Sure, here's a tip."
@@ -160,14 +166,39 @@ class TestChat:
         chat_service.get_recent_history.return_value = []
         app.dependency_overrides[get_profile_service] = lambda: profile_service
         app.dependency_overrides[get_chat_service] = lambda: chat_service
+        app.dependency_overrides[get_weight_service] = lambda: Mock()
 
         with patch("app.routers.ai.generate_chat_reply", return_value="Happy to help!") as mock_chat:
             response = TestClient(app).post("/ai/chat", json={"message": "What is progressive overload?"})
 
         assert response.status_code == 200
-        _, _, profile_arg, personal_info_arg = mock_chat.call_args.args
+        _, _, profile_arg, personal_info_arg, recent_progress_arg = mock_chat.call_args.args
         assert profile_arg is None
         assert personal_info_arg is None
+        assert recent_progress_arg is None
+
+    def test_includes_recent_progress_when_enough_weight_data(self) -> None:
+        _override_auth()
+        profile_service = Mock()
+        profile_service.get.return_value = _profile_response()
+        chat_service = Mock()
+        chat_service.get_recent_history.return_value = []
+        weight_service = Mock()
+        weight_service.list.return_value = [
+            SimpleNamespace(weight_kg=68.0, recorded_at=date.today() - timedelta(days=6)),
+            SimpleNamespace(weight_kg=67.2, recorded_at=date.today()),
+        ]
+        app.dependency_overrides[get_profile_service] = lambda: profile_service
+        app.dependency_overrides[get_chat_service] = lambda: chat_service
+        app.dependency_overrides[get_weight_service] = lambda: weight_service
+
+        with patch("app.routers.ai.generate_chat_reply", return_value="Nice progress!") as mock_chat:
+            response = TestClient(app).post("/ai/chat", json={"message": "How am I doing?"})
+
+        assert response.status_code == 200
+        _, _, _, _, recent_progress_arg = mock_chat.call_args.args
+        assert recent_progress_arg is not None
+        assert recent_progress_arg.deltaKg == -0.8
 
 
 class TestReport:

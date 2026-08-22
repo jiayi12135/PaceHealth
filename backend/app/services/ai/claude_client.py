@@ -18,6 +18,7 @@ from app.errors import APIError
 from app.services.ai.models import (
     ChatMessage,
     EquipmentIdentifyResponse,
+    FoodScanResult,
     IngredientIdentifyResponse,
     MealPlanResponse,
     Profile,
@@ -31,12 +32,14 @@ from app.services.ai.prompts import (
     EQUIPMENT_SYSTEM_PROMPT,
     INGREDIENT_SYSTEM_PROMPT,
     MEAL_PLAN_SYSTEM_PROMPT,
+    FOOD_SYSTEM_PROMPT,
     build_user_message,
     build_chat_system_context,
     build_report_user_message,
     build_equipment_user_message,
     build_ingredient_user_message,
     build_meal_plan_user_message,
+    build_food_user_message,
 )
 from app.services.ai.report_calculator import ReportStats
 
@@ -175,6 +178,29 @@ MEAL_PLAN_TOOL = {
 }
 
 
+# 强制 Claude 按这个 schema 返回结果(对应 models.py 里的 FoodScanResult)
+FOOD_IDENTIFY_TOOL = {
+    "name": "submit_food_scan",
+    "description": "提交对照片里这份食物的识别结果和热量/营养估算",
+    "input_schema": {
+        "type": "object",
+        "properties": {
+            "recognized": {"type": "boolean", "description": "是否能从照片里辨认出这是一份食物"},
+            "confidence": {"type": "number", "description": "0到1之间的小数,对这次识别+估算的把握程度;recognized为false时通常应该是比较低的数字"},
+            "foodName": {"type": ["string", "null"], "description": "食物/菜品名称,recognized为false时填null"},
+            "description": {"type": ["string", "null"], "description": "简短描述这是什么食物,recognized为false时填null"},
+            "portionEstimate": {"type": ["string", "null"], "description": "估算热量时假设的大概份量,比如'一碗约300g',recognized为false时填null"},
+            "estimatedCalories": {"type": ["integer", "null"], "description": "大概热量估算(kcal),无法合理估算则为null"},
+            "estimatedProteinG": {"type": ["number", "null"]},
+            "estimatedCarbsG": {"type": ["number", "null"]},
+            "estimatedFatG": {"type": ["number", "null"]},
+            "notRecognizedMessage": {"type": ["string", "null"], "description": "recognized为false时,给用户的友好提示(比如建议重新拍摄、离近一点拍);recognized为true时填null"},
+        },
+        "required": ["recognized", "confidence"],
+    },
+}
+
+
 def generate_workout_plan(profile: Profile, personal_info: UserPersonalInfo) -> WorkoutPlan:
     """调用 Claude API,返回结构化的 WorkoutPlan"""
 
@@ -202,10 +228,11 @@ def generate_chat_reply(
     history: List[ChatMessage],
     profile: Optional[Profile],
     personal_info: Optional[UserPersonalInfo],
+    recent_progress: Optional[ProgressSummary] = None,
 ) -> str:
     """调用 Claude API 生成一句聊天回复(纯文字,不强制JSON格式)"""
 
-    system_prompt = build_chat_system_context(profile, personal_info)
+    system_prompt = build_chat_system_context(profile, personal_info, recent_progress)
 
     # 把之前的聊天记录转成 Claude API 要求的格式
     # ChatMessage.role 目前只有 "user" / "assistant" 两种,跟 Claude API 的角色名正好一致
@@ -303,6 +330,46 @@ def identify_ingredients(image_url: str) -> IngredientIdentifyResponse:
     for block in response.content:
         if block.type == "tool_use" and block.name == "submit_ingredients":
             return IngredientIdentifyResponse.model_validate(block.input)
+
+    raise RuntimeError("Claude 没有返回预期的 tool_use 结果,请检查prompt或API返回内容")
+
+
+def estimate_food(image_url: str) -> FoodScanResult:
+    """调用 Claude 的 vision 能力识别照片里的一份餐食,估算大概的热量和营养成分。
+
+    跟 identify_ingredients 的区别: 这里看的是一份做好准备吃/正在吃的菜品,不是
+    生食材,目的是给Nutrition页面做每日热量记录用,不是给食谱推荐用。
+    跟其他识图函数一样,图片用URL的方式传给Claude,要求 image_url 是公开可访问的地址。
+    """
+
+    user_message = build_food_user_message()
+
+    response = _get_client().messages.create(
+        model=MODEL_NAME,
+        max_tokens=1024,
+        system=FOOD_SYSTEM_PROMPT,
+        tools=[FOOD_IDENTIFY_TOOL],
+        tool_choice={"type": "tool", "name": "submit_food_scan"},
+        messages=[
+            {
+                "role": "user",
+                "content": [
+                    {
+                        "type": "image",
+                        "source": {
+                            "type": "url",
+                            "url": image_url,
+                        },
+                    },
+                    {"type": "text", "text": user_message},
+                ],
+            }
+        ],
+    )
+
+    for block in response.content:
+        if block.type == "tool_use" and block.name == "submit_food_scan":
+            return FoodScanResult.model_validate(block.input)
 
     raise RuntimeError("Claude 没有返回预期的 tool_use 结果,请检查prompt或API返回内容")
 

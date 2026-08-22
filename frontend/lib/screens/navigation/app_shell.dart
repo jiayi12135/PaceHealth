@@ -4,17 +4,21 @@ import '../../state/ai_assistant_store.dart';
 import '../../widgets/ai_bubble.dart';
 import '../profile/profile_area_screen.dart';
 import '../home/home_screen.dart';
-import '../placeholder/placeholder_screen.dart';
+import '../nutrition/nutrition_screen.dart';
+import '../plan/plan_screen.dart';
 
 class AppShell extends StatefulWidget {
   final ProfileStore store;
-  const AppShell({super.key, required this.store});
+  // 默认停在Home(index 2)。问卷刚填完那次想直接停在Plan tab(index 1),
+  // 让用户一进来就看到刚生成好的计划,不用自己再点一次。
+  final int initialIndex;
+  const AppShell({super.key, required this.store, this.initialIndex = 2});
   @override
   State<AppShell> createState() => _AppShellState();
 }
 
 class _AppShellState extends State<AppShell> {
-  int index = 2;
+  late int index = widget.initialIndex;
   final AiAssistantStore _aiStore = AiAssistantStore();
 
   @override
@@ -26,8 +30,8 @@ class _AppShellState extends State<AppShell> {
   @override
   Widget build(BuildContext context) {
     final pages = [
-      const PlaceholderScreen(title: 'Nutrition', icon: Icons.restaurant),
-      const PlaceholderScreen(title: 'Plan', icon: Icons.fitness_center),
+      NutritionScreen(store: widget.store),
+      PlanScreen(store: widget.store),
       const HomeScreen(),
       ProfileAreaScreen(store: widget.store, aiStore: _aiStore),
     ];

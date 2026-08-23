@@ -33,6 +33,10 @@ create table if not exists public.user_personal_info (
     injuries text[] not null default '{}',
     surgery_history text[] not null default '{}',
     exercises_to_avoid text[] not null default '{}',
+    -- Optional. Powers the Home calendar's next-period prediction (fixed 28-day
+    -- cycle assumption, computed in code) and feeds the same fact into AI plan
+    -- generation + chat context, same pattern as injuries/equipment.
+    last_period_date date,
     updated_at timestamptz not null default now()
 );
 
@@ -121,6 +125,20 @@ create table if not exists public.workout_completions (
     user_id uuid not null references auth.users(id) on delete cascade,
     plan_id uuid not null references public.ai_plans(id) on delete cascade,
     day text not null,
+    -- 'completed' or 'skipped'. Skips carry a reason so the AI coach can read
+    -- recent adherence and adjust its advice (see routers/ai.py chat context).
+    status text not null default 'completed' check (status in ('completed', 'skipped')),
+    reason text,
+    duration_seconds integer,
+    -- Per-exercise breakdown from the swipe-through workout session screen: each
+    -- entry is {exerciseName, status, estimatedDurationSeconds, actualDurationSeconds,
+    -- skipReason, skipReasonNote}. Null for older/simpler completions that only
+    -- recorded the day-level status above.
+    exercise_log jsonb,
+    -- Answers from the contextual end-of-workout feedback form (only asked when the
+    -- session looked unusual — see WorkoutFeedback in app/schemas/workout.py). Null
+    -- when no feedback was collected (the normal case).
+    feedback jsonb,
     completed_at timestamptz not null default now()
 );
 

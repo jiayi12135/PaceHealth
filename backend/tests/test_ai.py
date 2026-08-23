@@ -21,6 +21,7 @@ from app.services.plan_service import get_plan_service
 from app.services.profile_service import get_profile_service
 from app.services.report_service import get_report_service
 from app.services.weight_service import get_weight_service
+from app.services.workout_service import get_workout_service
 
 
 USER_ID = "11111111-1111-1111-1111-111111111111"
@@ -85,6 +86,7 @@ class TestGeneratePlan:
                     duration=None,
                     restSeconds=60,
                     reason="Builds lower-body strength safely.",
+                    instructions="Stand with feet shoulder-width apart, lower your hips back and down, then push through your heels to stand.",
                     videoUrl=None,
                 )
             ],
@@ -138,6 +140,9 @@ class TestChat:
         app.dependency_overrides[get_profile_service] = lambda: profile_service
         app.dependency_overrides[get_chat_service] = lambda: chat_service
         app.dependency_overrides[get_weight_service] = lambda: weight_service
+        workout_service = Mock()
+        workout_service.list_recent.return_value = []
+        app.dependency_overrides[get_workout_service] = lambda: workout_service
 
         with patch("app.routers.ai.generate_chat_reply", return_value="Sure, here's a tip.") as mock_chat:
             response = TestClient(app).post("/ai/chat", json={"message": "Any tips for squats?"})
@@ -146,7 +151,8 @@ class TestChat:
         assert response.json() == {"reply": "Sure, here's a tip."}
 
         mock_chat.assert_called_once()
-        message_arg, history_arg, profile_arg, personal_info_arg, recent_progress_arg = mock_chat.call_args.args
+        message_arg, history_arg, profile_arg, personal_info_arg, recent_progress_arg, adherence_arg = mock_chat.call_args.args
+        assert adherence_arg is None
         assert message_arg == "Any tips for squats?"
         assert len(history_arg) == 2
         assert profile_arg is not None
@@ -167,12 +173,15 @@ class TestChat:
         app.dependency_overrides[get_profile_service] = lambda: profile_service
         app.dependency_overrides[get_chat_service] = lambda: chat_service
         app.dependency_overrides[get_weight_service] = lambda: Mock()
+        no_workouts = Mock()
+        no_workouts.list_recent.return_value = []
+        app.dependency_overrides[get_workout_service] = lambda: no_workouts
 
         with patch("app.routers.ai.generate_chat_reply", return_value="Happy to help!") as mock_chat:
             response = TestClient(app).post("/ai/chat", json={"message": "What is progressive overload?"})
 
         assert response.status_code == 200
-        _, _, profile_arg, personal_info_arg, recent_progress_arg = mock_chat.call_args.args
+        _, _, profile_arg, personal_info_arg, recent_progress_arg, _ = mock_chat.call_args.args
         assert profile_arg is None
         assert personal_info_arg is None
         assert recent_progress_arg is None
@@ -191,12 +200,15 @@ class TestChat:
         app.dependency_overrides[get_profile_service] = lambda: profile_service
         app.dependency_overrides[get_chat_service] = lambda: chat_service
         app.dependency_overrides[get_weight_service] = lambda: weight_service
+        workout_service = Mock()
+        workout_service.list_recent.return_value = []
+        app.dependency_overrides[get_workout_service] = lambda: workout_service
 
         with patch("app.routers.ai.generate_chat_reply", return_value="Nice progress!") as mock_chat:
             response = TestClient(app).post("/ai/chat", json={"message": "How am I doing?"})
 
         assert response.status_code == 200
-        _, _, _, _, recent_progress_arg = mock_chat.call_args.args
+        _, _, _, _, recent_progress_arg, _ = mock_chat.call_args.args
         assert recent_progress_arg is not None
         assert recent_progress_arg.deltaKg == -0.8
 

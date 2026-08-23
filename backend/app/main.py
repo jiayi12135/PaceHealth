@@ -7,6 +7,7 @@ from app.routers.auth import router as auth_router
 from app.routers.scans import router as scans_router
 from app.routers.users import router as users_router
 from app.routers.weights import router as weights_router
+from app.routers.workouts import router as workouts_router
 
 
 settings = get_settings()
@@ -15,6 +16,7 @@ app.add_exception_handler(APIError, api_error_handler)
 app.include_router(auth_router)
 app.include_router(users_router)
 app.include_router(weights_router)
+app.include_router(workouts_router)
 app.include_router(ai_router)
 app.include_router(scans_router)
 

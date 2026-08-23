@@ -6,6 +6,7 @@ import '../profile/profile_area_screen.dart';
 import '../home/home_screen.dart';
 import '../nutrition/nutrition_screen.dart';
 import '../plan/plan_screen.dart';
+import '../report/report_screen.dart';
 
 class AppShell extends StatefulWidget {
   final ProfileStore store;
@@ -29,10 +30,12 @@ class _AppShellState extends State<AppShell> {
 
   @override
   Widget build(BuildContext context) {
+    // Tab顺序按团队定的: Food > Plan > Home > Report > Profile(Home居中)
     final pages = [
       NutritionScreen(store: widget.store),
       PlanScreen(store: widget.store),
-      const HomeScreen(),
+      HomeScreen(store: widget.store, onNavigateToTab: (i) => setState(() => index = i)),
+      ReportScreen(store: widget.store),
       ProfileAreaScreen(store: widget.store, aiStore: _aiStore),
     ];
 
@@ -46,9 +49,10 @@ class _AppShellState extends State<AppShell> {
               selectedIndex: index,
               onDestinationSelected: (i) => setState(() => index = i),
               destinations: const [
-                NavigationDestination(icon: Icon(Icons.restaurant_outlined), selectedIcon: Icon(Icons.restaurant), label: 'Nutrition'),
+                NavigationDestination(icon: Icon(Icons.restaurant_outlined), selectedIcon: Icon(Icons.restaurant), label: 'Food'),
                 NavigationDestination(icon: Icon(Icons.fitness_center_outlined), selectedIcon: Icon(Icons.fitness_center), label: 'Plan'),
                 NavigationDestination(icon: Icon(Icons.home_outlined), selectedIcon: Icon(Icons.home), label: 'Home'),
+                NavigationDestination(icon: Icon(Icons.insights_outlined), selectedIcon: Icon(Icons.insights), label: 'Report'),
                 NavigationDestination(icon: Icon(Icons.person_outline), selectedIcon: Icon(Icons.person), label: 'Profile'),
               ],
             ),

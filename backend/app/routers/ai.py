@@ -42,6 +42,7 @@ from app.services.ai_bridge import (
     to_workout_plan_response,
 )
 from app.services.chat_service import ChatService, get_chat_service
+from app.services.workout_service import WorkoutService, get_workout_service
 from app.services.plan_service import PlanService, get_plan_service
 from app.services.profile_service import ProfileService, get_profile_service
 from app.services.report_service import ReportService, get_report_service
@@ -54,6 +55,26 @@ router = APIRouter(prefix="/ai", tags=["ai"])
 @router.get("/health")
 def ai_health_check() -> dict[str, str]:
     return {"status": "ok"}
+
+
+# 跟前端workout_session_screen.dart里的skip理由选项一一对应(见_skipReasonLabels),
+# 只是这边给的是给AI读的措辞,不是给用户看的按钮文字。收到没在这个映射里的code
+# (理论上不该发生,前端是从固定选项里选的)就原样把code显示出来,不报错。
+_SKIP_REASON_LABELS = {
+    "too_difficult": "too difficult",
+    "pain_discomfort": "pain or discomfort",
+    "equipment_unavailable": "equipment unavailable",
+    "dont_know_how": "didn't know how to perform it",
+    "not_enough_space": "not enough space",
+    "other": "other reason",
+}
+
+
+def _describe_skip_reason(entry) -> str:
+    label = _SKIP_REASON_LABELS.get(entry.skip_reason or "", entry.skip_reason or "no reason given")
+    if entry.skip_reason == "other" and entry.skip_reason_note:
+        return f"{label}: {entry.skip_reason_note}"
+    return label
 
 
 def _require_profile(profiles: ProfileService, user_id: str):
@@ -112,6 +133,7 @@ def chat(
     profiles: Annotated[ProfileService, Depends(get_profile_service)],
     chats: Annotated[ChatService, Depends(get_chat_service)],
     weights: Annotated[WeightService, Depends(get_weight_service)],
+    workouts: Annotated[WorkoutService, Depends(get_workout_service)],
 ) -> ChatResponse:
     # Unlike generate-plan/report, chat works without a saved profile — it just
     # can't give personalized advice yet (mirrors ai-service's own behavior).
@@ -143,6 +165,30 @@ def chat(
         except PostgrestAPIError:
             pass
 
+    # 最近14天的训练完成/跳过记录也进同一份context——AI能看到"跳过了几次、为什么",
+    # 但记录本身是系统写的事实,AI只读不编。Best-effort,查失败聊天照常。
+    adherence_note = None
+    try:
+        recent = workouts.list_recent(user.user_id, days=14)
+        if recent:
+            parts = []
+            for completion in recent[:10]:
+                if completion.status == "completed":
+                    part = f"{completion.day}: completed"
+                    # 就算这一天整体算"完成",里面单个动作也可能被跳过——这才是对
+                    # 调整计划真正有用的信号(比如"深蹲反复因为pain跳过"),
+                    # 所以从exercise_log里单独拎出来,不是只看day级别的status。
+                    skipped = [e for e in (completion.exercise_log or []) if e.status == "skipped"][:3]
+                    if skipped:
+                        reasons = "; ".join(f"{e.exercise_name} ({_describe_skip_reason(e)})" for e in skipped)
+                        part += f" but skipped within the session: {reasons}"
+                    parts.append(part)
+                else:
+                    parts.append(f"{completion.day}: skipped ({completion.reason or 'no reason given'})")
+            adherence_note = "; ".join(parts)
+    except PostgrestAPIError:
+        pass
+
     try:
         reply = generate_chat_reply(
             payload.message,
@@ -150,6 +196,7 @@ def chat(
             to_ai_profile(profile.profile) if profile else None,
             to_ai_personal_info(profile.personal_info) if profile else None,
             recent_progress,
+            adherence_note,
         )
     except APIError:
         raise

@@ -5,6 +5,7 @@ import '../../state/ai_assistant_store.dart';
 import '../../state/profile_store.dart';
 import '../../theme.dart';
 import '../plan/plan_generating_screen.dart';
+import '../../widgets/app_toast.dart';
 
 /// AI伙伴的选项(按草图:猫/狗/狼,各有名字和性格,说话语气会跟着性格走)。
 /// 动物形象暂时用emoji代替,之后可以换成插画图片。
@@ -55,13 +56,17 @@ class _QuestionnaireState extends State<QuestionnaireScreen> {
   final Set<String> homeEquipment = {};
   final Set<String> gymEquipment = {};
   final Set<String> outdoorActivities = {};
+  String eatingLocation = '';
 
-  // Step 6: careful areas
+  // Step 6: careful areas + posture + surgery
   final Set<String> carefulAreas = {};
+  final Set<String> postureIssues = {};
+  final Set<String> surgeryHistory = {};
 
-  // Step 7: schedule
-  int daysPerWeek = 3;
+  // Step 7: schedule — 用户直接选星期几,每周次数由选中的天数推出来
+  final Set<String> workoutDays = {};
   final minutes = TextEditingController(text: '45');
+  static const _weekdays = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
 
   @override
   void dispose() {
@@ -404,6 +409,18 @@ class _QuestionnaireState extends State<QuestionnaireScreen> {
         _locationSection('🏋️', 'Gym', 'Gym', ['Treadmill', 'Machines', 'Free weights', 'Stationary bike'], gymEquipment),
         const SizedBox(height: 12),
         _locationSection('🌳', 'Outdoor', 'Outdoors', ['Jogging', 'Swimming', 'Cycling', 'Hiking'], outdoorActivities),
+        _fieldLabel('Where do you usually eat?'),
+        Wrap(
+          spacing: 10,
+          children: ['Home', 'Outside', 'Both'].map((option) {
+            final selected = eatingLocation == option;
+            return ChoiceChip(
+              label: Text(option),
+              selected: selected,
+              onSelected: (_) => setState(() => eatingLocation = option),
+            );
+          }).toList(),
+        ),
       ],
     );
   }
@@ -444,49 +461,62 @@ class _QuestionnaireState extends State<QuestionnaireScreen> {
     );
   }
 
-  // ---------- Step 6: careful areas ----------
-  Widget _carefulStep() {
-    const areas = ['None', 'Back', 'Knee', 'Shoulder', 'Wrist', 'Ankle', 'Neck', 'Hip'];
-    return Wrap(
-      spacing: 10,
-      runSpacing: 10,
-      children: areas.map((area) {
-        final selected = area == 'None' ? carefulAreas.isEmpty : carefulAreas.contains(area);
-        return FilterChip(
-          label: Padding(padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 4), child: Text(area)),
-          selected: selected,
-          onSelected: (_) => setState(() {
-            if (area == 'None') {
-              carefulAreas.clear();
-            } else {
-              selected ? carefulAreas.remove(area) : carefulAreas.add(area);
-            }
-          }),
-        );
-      }).toList(),
-    );
-  }
+  // ---------- Step 6: careful areas + posture + surgery ----------
+  Widget _carefulStep() => Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          _fieldLabel('Injured / sensitive areas'),
+          _noneAwareChips(const ['None', 'Back', 'Knee', 'Shoulder', 'Wrist', 'Ankle', 'Neck', 'Hip'], carefulAreas),
+          _fieldLabel('Posture issues'),
+          _noneAwareChips(const ['None', 'Rounded shoulders', 'Hunched back', 'Pelvic tilt', 'Flat feet'], postureIssues),
+          _fieldLabel('Past surgeries'),
+          _noneAwareChips(const ['None', 'Knee', 'Shoulder', 'Spine', 'Abdominal', 'Heart'], surgeryHistory),
+        ],
+      );
+
+  /// 一组带"None"选项的多选chips:选None清空其他,选任何其他项就取消None的视觉状态。
+  Widget _noneAwareChips(List<String> options, Set<String> selectedSet) => Wrap(
+        spacing: 10,
+        runSpacing: 10,
+        children: options.map((option) {
+          final selected = option == 'None' ? selectedSet.isEmpty : selectedSet.contains(option);
+          return FilterChip(
+            label: Padding(padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 4), child: Text(option)),
+            selected: selected,
+            onSelected: (_) => setState(() {
+              if (option == 'None') {
+                selectedSet.clear();
+              } else {
+                selected ? selectedSet.remove(option) : selectedSet.add(option);
+              }
+            }),
+          );
+        }).toList(),
+      );
 
   // ---------- Step 7: schedule ----------
   Widget _scheduleStep() => Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          _fieldLabel('Days per week'),
-          Card(
-            child: Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
-              child: Row(
-                children: [
-                  IconButton(onPressed: () => setState(() => daysPerWeek = (daysPerWeek - 1).clamp(1, 7)), icon: const Icon(Icons.remove_circle_outline)),
-                  Expanded(child: Center(child: Text('$daysPerWeek', style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 22)))),
-                  IconButton(onPressed: () => setState(() => daysPerWeek = (daysPerWeek + 1).clamp(1, 7)), icon: const Icon(Icons.add_circle_outline)),
-                ],
-              ),
-            ),
+          _fieldLabel('Which days do you want to work out?'),
+          Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            children: _weekdays.map((day) {
+              final selected = workoutDays.contains(day);
+              return FilterChip(
+                label: Text(day),
+                selected: selected,
+                onSelected: (on) => setState(() => on ? workoutDays.add(day) : workoutDays.remove(day)),
+              );
+            }).toList(),
           ),
           Padding(
             padding: const EdgeInsets.only(top: 6),
-            child: Text('Max 7 days', style: TextStyle(color: Colors.grey.shade500, fontSize: 12)),
+            child: Text(
+              workoutDays.isEmpty ? 'Pick at least one day' : '${workoutDays.length} day${workoutDays.length > 1 ? 's' : ''} per week',
+              style: TextStyle(color: Colors.grey.shade500, fontSize: 12),
+            ),
           ),
           _fieldLabel('Minutes per session'),
           TextField(controller: minutes, keyboardType: TextInputType.number),
@@ -506,7 +536,10 @@ class _QuestionnaireState extends State<QuestionnaireScreen> {
       if (homeEquipment.isNotEmpty || gymEquipment.isNotEmpty) MapEntry('Equipment', {...homeEquipment, ...gymEquipment}.where((e) => e != 'None').join(', ')),
       if (outdoorActivities.isNotEmpty) MapEntry('Outdoor', outdoorActivities.join(', ')),
       MapEntry('Careful with', carefulAreas.isEmpty ? 'None' : carefulAreas.join(', ')),
-      MapEntry('Schedule', '$daysPerWeek days/week · ${minutes.text} min'),
+      if (postureIssues.isNotEmpty) MapEntry('Posture', postureIssues.join(', ')),
+      if (surgeryHistory.isNotEmpty) MapEntry('Surgeries', surgeryHistory.join(', ')),
+      if (eatingLocation.isNotEmpty) MapEntry('Eats at', eatingLocation),
+      MapEntry('Schedule', '${workoutDays.join(', ')} · ${minutes.text} min'),
     ];
     return Card(
       child: Padding(
@@ -550,6 +583,7 @@ class _QuestionnaireState extends State<QuestionnaireScreen> {
       case 5:
         if (locations.isEmpty) return _error('Please pick at least one location.');
       case 7:
+        if (workoutDays.isEmpty) return _error('Please pick at least one workout day.');
         if ((int.tryParse(minutes.text) ?? 0) <= 0) return _error('Please enter minutes per session.');
     }
 
@@ -573,8 +607,8 @@ class _QuestionnaireState extends State<QuestionnaireScreen> {
       // 减重目标用用户选的目标体重;增肌/维持没让用户填目标体重,就用当前体重占位
       targetWeightKg: goal == 'Lose weight' ? targetWeight : startValue,
       goal: goalText,
-      lifestyle: '$experience level · $activity',
-      exerciseFrequencyPerWeek: daysPerWeek,
+      lifestyle: '$experience level · $activity${eatingLocation.isEmpty ? '' : ' · usually eats: $eatingLocation'}',
+      exerciseFrequencyPerWeek: workoutDays.length,
       exerciseDurationMinutes: int.tryParse(minutes.text) ?? 0,
       exerciseHabit: outdoorActivities.join(', '),
       exerciseLocation: locations.join(', '),
@@ -582,6 +616,8 @@ class _QuestionnaireState extends State<QuestionnaireScreen> {
     final info = UserPersonalInfo(
       availableEquipment: {...homeEquipment, ...gymEquipment}.where((e) => e != 'None').toList(),
       injuries: carefulAreas.map((a) => '$a (sensitive area)').toList(),
+      postureIssues: postureIssues.toList(),
+      surgeryHistory: surgeryHistory.map((s) => '$s surgery').toList(),
     );
 
     setState(() => _saving = true);
@@ -591,6 +627,7 @@ class _QuestionnaireState extends State<QuestionnaireScreen> {
       if (companion != null) {
         await AiAssistantStore().save(name: companion!.name, iconKey: companion!.iconKey);
       }
+      widget.store.workoutDays = _weekdays.where(workoutDays.contains).toList();
       widget.store.save(profile: profile, personalInfo: info);
       // 问卷填完先过渡到一个loading页,在那边生成plan(带着刚存的profile——伤病/
       // 器材都在里面),生成完直接停在Plan tab,而不是回Home再让用户自己点进去。
@@ -602,7 +639,7 @@ class _QuestionnaireState extends State<QuestionnaireScreen> {
     }
   }
 
-  void _error(String message) => ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(message)));
+  void _error(String message) => showAppToast(context, message, isError: true);
 }
 
 /// 吉祥物头像+对话气泡(按草图:左边小头像,右边一个圆角气泡)

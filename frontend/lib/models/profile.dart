@@ -26,13 +26,29 @@ class UserProfile {
 }
 class UserPersonalInfo {
   List<String> availableEquipment, postureIssues, injuries, surgeryHistory, exercisesToAvoid;
-  UserPersonalInfo({List<String>? availableEquipment, List<String>? postureIssues, List<String>? injuries, List<String>? surgeryHistory, List<String>? exercisesToAvoid})
-      : availableEquipment = availableEquipment ?? [],
+  // 只有女性用户在Home页填过才会有值,格式'yyyy-MM-dd'。用来在Home算"离下次经期还有几天"
+  // (纯前端算,固定28天假设,跟backend算法一致),也会存到backend给AI聊天context用。
+  String? lastPeriodDate;
+  UserPersonalInfo({
+    List<String>? availableEquipment,
+    List<String>? postureIssues,
+    List<String>? injuries,
+    List<String>? surgeryHistory,
+    List<String>? exercisesToAvoid,
+    this.lastPeriodDate,
+  })  : availableEquipment = availableEquipment ?? [],
         postureIssues = postureIssues ?? [],
         injuries = injuries ?? [],
         surgeryHistory = surgeryHistory ?? [],
         exercisesToAvoid = exercisesToAvoid ?? [];
-  Map<String, dynamic> toJson() => {'availableEquipment': availableEquipment, 'postureIssues': postureIssues, 'injuries': injuries, 'surgeryHistory': surgeryHistory, 'exercisesToAvoid': exercisesToAvoid};
+  Map<String, dynamic> toJson() => {
+        'availableEquipment': availableEquipment,
+        'postureIssues': postureIssues,
+        'injuries': injuries,
+        'surgeryHistory': surgeryHistory,
+        'exercisesToAvoid': exercisesToAvoid,
+        if (lastPeriodDate != null) 'lastPeriodDate': lastPeriodDate,
+      };
 
   factory UserPersonalInfo.fromJson(Map<String, dynamic> json) => UserPersonalInfo(
         availableEquipment: (json['availableEquipment'] as List?)?.cast<String>(),
@@ -40,5 +56,6 @@ class UserPersonalInfo {
         injuries: (json['injuries'] as List?)?.cast<String>(),
         surgeryHistory: (json['surgeryHistory'] as List?)?.cast<String>(),
         exercisesToAvoid: (json['exercisesToAvoid'] as List?)?.cast<String>(),
+        lastPeriodDate: json['lastPeriodDate'] as String?,
       );
 }

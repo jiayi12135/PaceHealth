@@ -35,6 +35,10 @@ class UserPersonalInfo(BaseModel):
     # 可选,只有女性用户在Home页选填过末次经期日期才会有值。用来算"离下次预计经期还有几天"
     # (固定28天周期的粗略假设,backend代码算,不是AI猜),接近/正值经期时给训练计划/聊天一点提示。
     lastPeriodDate: Optional[date] = None
+    # 问卷里选的具体训练星期几,按顺序排好(比如['Mon','Wed','Fri'])。生成计划时用来
+    # (1)告诉AI训练日要按这个顺序生成,(2)结合lastPeriodDate算出哪个训练日会落在
+    # 经期/经期第二天,好让对应那天的强度调轻一点——见prompts.py的describe_period_aware_schedule。
+    workoutWeekdays: List[str] = Field(default_factory=list)
 
 
 # ---------- 请求体:前端/后端发给这个AI服务的完整数据 ----------

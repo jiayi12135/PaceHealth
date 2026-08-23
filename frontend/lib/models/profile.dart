@@ -29,6 +29,10 @@ class UserPersonalInfo {
   // 只有女性用户在Home页填过才会有值,格式'yyyy-MM-dd'。用来在Home算"离下次经期还有几天"
   // (纯前端算,固定28天假设,跟backend算法一致),也会存到backend给AI聊天context用。
   String? lastPeriodDate;
+  // 问卷里选的具体星期几(比如['Mon','Wed','Fri']),按顺序对应生成计划里的Day 1/2/3。
+  // 存这里是为了在hot restart/重新hydrate时不丢失,并且传给backend用来做经期感知的
+  // plan生成(见ProfileStore.workoutDays的同步逻辑)。
+  List<String> workoutWeekdays;
   UserPersonalInfo({
     List<String>? availableEquipment,
     List<String>? postureIssues,
@@ -36,11 +40,13 @@ class UserPersonalInfo {
     List<String>? surgeryHistory,
     List<String>? exercisesToAvoid,
     this.lastPeriodDate,
+    List<String>? workoutWeekdays,
   })  : availableEquipment = availableEquipment ?? [],
         postureIssues = postureIssues ?? [],
         injuries = injuries ?? [],
         surgeryHistory = surgeryHistory ?? [],
-        exercisesToAvoid = exercisesToAvoid ?? [];
+        exercisesToAvoid = exercisesToAvoid ?? [],
+        workoutWeekdays = workoutWeekdays ?? [];
   Map<String, dynamic> toJson() => {
         'availableEquipment': availableEquipment,
         'postureIssues': postureIssues,
@@ -48,6 +54,7 @@ class UserPersonalInfo {
         'surgeryHistory': surgeryHistory,
         'exercisesToAvoid': exercisesToAvoid,
         if (lastPeriodDate != null) 'lastPeriodDate': lastPeriodDate,
+        'workoutWeekdays': workoutWeekdays,
       };
 
   factory UserPersonalInfo.fromJson(Map<String, dynamic> json) => UserPersonalInfo(
@@ -57,5 +64,6 @@ class UserPersonalInfo {
         surgeryHistory: (json['surgeryHistory'] as List?)?.cast<String>(),
         exercisesToAvoid: (json['exercisesToAvoid'] as List?)?.cast<String>(),
         lastPeriodDate: json['lastPeriodDate'] as String?,
+        workoutWeekdays: (json['workoutWeekdays'] as List?)?.cast<String>(),
       );
 }

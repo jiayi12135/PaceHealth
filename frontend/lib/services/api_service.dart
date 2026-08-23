@@ -103,6 +103,42 @@ class ApiService {
     }
     return FitnessPlan.fromJson(jsonDecode(response.body) as Map<String, dynamic>);
   }
+
+  /// 拿这个用户最近一次生成的plan(如果有的话)——登录/重启后用来恢复Home/Calendar/Plan
+  /// 页面的内容,不用重新生成一份新的。没有生成过plan时backend返回404,这里当作null处理。
+  Future<FitnessPlan?> fetchLatestPlan({String? accessToken}) async {
+    if (ApiConfig.useMockData) return null;
+
+    final response = await http.get(
+      Uri.parse('${ApiConfig.baseUrl}/ai/plan'),
+      headers: {if (accessToken != null) 'Authorization': 'Bearer $accessToken'},
+    );
+    if (response.statusCode == 404) return null;
+    if (response.statusCode != 200) {
+      throw Exception('Could not load your plan (${response.statusCode}): ${response.body}');
+    }
+    return FitnessPlan.fromJson(jsonDecode(response.body) as Map<String, dynamic>);
+  }
+
+  /// 计划一生成完自动分配(见profile_store.dart的autoAssignWorkoutDays)或者Plan/Calendar
+  /// 页面Reschedule改了"哪天练哪个训练日"之后调用,把这份映射存到backend(挂在这个plan
+  /// 底下),这样重启/重新登录也不会丢。
+  Future<void> saveDayAssignments({required String planId, required Map<String, String> assignments, String? accessToken}) async {
+    if (ApiConfig.useMockData) return;
+
+    final response = await http.put(
+      Uri.parse('${ApiConfig.baseUrl}/ai/plan/day-assignments'),
+      headers: {
+        'Content-Type': 'application/json',
+        if (accessToken != null) 'Authorization': 'Bearer $accessToken',
+      },
+      body: jsonEncode({'planId': planId, 'assignments': assignments}),
+    );
+    if (response.statusCode != 204 && response.statusCode != 200) {
+      throw Exception('Could not save your schedule (${response.statusCode}): ${response.body}');
+    }
+  }
+
   /// 周报/月报:数字全部是backend代码算好的,AI只负责把数字写成一段总结文字。
   Future<Report> getReport({required String periodType, String? accessToken}) async {
     if (ApiConfig.useMockData) {
@@ -301,6 +337,58 @@ class ApiService {
     return FoodScanResult.fromJson(jsonDecode(response.body) as Map<String, dynamic>);
   }
 
+  /// 删除今天记录的一条食物(扫错了/重复了想撤掉)。
+  Future<void> deleteFoodScan({required String scanId, String? accessToken}) async {
+    if (ApiConfig.useMockData) return;
+
+    final response = await http.delete(
+      Uri.parse('${ApiConfig.baseUrl}/food/scans/$scanId'),
+      headers: {if (accessToken != null) 'Authorization': 'Bearer $accessToken'},
+    );
+    if (response.statusCode != 204 && response.statusCode != 200) {
+      throw Exception('Could not delete this scan (${response.statusCode}): ${response.body}');
+    }
+  }
+
+  /// 根据可用食材+忌口(可选带上最近体重进度)生成几道食谱推荐,给Nutrition页的
+  /// "Get meal ideas"用。不落库——每次都是按当下食材现生成,跟plan/report不一样,
+  /// 这个本来就是即用即弃的建议,不需要历史记录。
+  Future<MealPlanResult> generateMealPlan({
+    List<String> availableIngredients = const [],
+    List<String> dietaryRestrictions = const [],
+    bool includeRecentProgress = false,
+    String? accessToken,
+  }) async {
+    if (ApiConfig.useMockData) {
+      await Future.delayed(const Duration(milliseconds: 500));
+      return const MealPlanResult(
+        planName: 'Balanced ideas for you',
+        goal: 'lose_weight',
+        dailyCalorieTarget: 1800,
+        recipes: [
+          Recipe(mealType: 'lunch', recipeName: 'Chicken & greens bowl', ingredientsUsed: ['chicken', 'greens'], instructions: 'Grill the chicken, toss with greens.', estimatedCalories: 420, estimatedProteinG: 35, reason: 'High protein, keeps you full.'),
+        ],
+      );
+    }
+
+    final response = await http.post(
+      Uri.parse('${ApiConfig.baseUrl}/ai/generate-meal-plan'),
+      headers: {
+        'Content-Type': 'application/json',
+        if (accessToken != null) 'Authorization': 'Bearer $accessToken',
+      },
+      body: jsonEncode({
+        'availableIngredients': availableIngredients,
+        'dietaryRestrictions': dietaryRestrictions,
+        'includeRecentProgress': includeRecentProgress,
+      }),
+    );
+    if (response.statusCode != 200) {
+      throw Exception('Could not generate meal ideas (${response.statusCode}): ${response.body}');
+    }
+    return MealPlanResult.fromJson(jsonDecode(response.body) as Map<String, dynamic>);
+  }
+
   /// 今日已经记录的食物列表+总热量,给Nutrition页面用。
   Future<DailyFoodLog> fetchTodayFoodLog({String? accessToken}) async {
     if (ApiConfig.useMockData) {
@@ -318,7 +406,7 @@ class ApiService {
     return DailyFoodLog.fromJson(jsonDecode(response.body) as Map<String, dynamic>);
   }
 
-  FitnessPlan _mockPlan() => const FitnessPlan(planName: 'Your balanced starter plan', goal: 'lose_weight', weeklyFrequency: 3, exercises: [
+  FitnessPlan _mockPlan() => FitnessPlan(planName: 'Your balanced starter plan', goal: 'lose_weight', weeklyFrequency: 3, exercises: const [
     Exercise(day: 'Day 1', exerciseName: 'Bodyweight Squat', sets: 3, reps: 12, restSeconds: 60, reason: 'Build lower-body strength with a joint-friendly movement.'),
     Exercise(day: 'Day 1', exerciseName: 'Dead Bug', sets: 3, reps: 10, restSeconds: 45, reason: 'Strengthen your core and support better posture.'),
     Exercise(day: 'Day 2', exerciseName: 'Brisk Walk', sets: 1, duration: 1200, restSeconds: 0, reason: 'A sustainable cardio session matched to your current fitness level.'),

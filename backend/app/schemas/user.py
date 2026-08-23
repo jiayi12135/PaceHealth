@@ -35,6 +35,11 @@ class PersonalInfoData(APIModel):
     # period from this (fixed 28-day assumption, computed in code, not by the
     # AI) and the same raw fact feeds plan generation + chat context.
     last_period_date: date | None = None
+    # Ordered weekdays chosen in the questionnaire (e.g. ["Mon", "Wed", "Fri"]).
+    # Sent to plan generation so the AI knows which training day (by position)
+    # corresponds to which real weekday — needed to line up last_period_date
+    # with a specific training day for the lighter-intensity-on-period-days logic.
+    workout_weekdays: list[str] = Field(default_factory=list)
 
 
 class UserProfileWrite(APIModel):

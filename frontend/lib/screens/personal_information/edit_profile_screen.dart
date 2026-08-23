@@ -66,6 +66,10 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
       availableEquipment: _split(equipment.text),
       postureIssues: _split(posture.text),
       surgeryHistory: _split(surgery.text),
+      // 这个表单没有UI可以改训练星期几/末次经期,原样带回去,避免保存时被静默清空。
+      exercisesToAvoid: widget.store.personalInfo.exercisesToAvoid,
+      lastPeriodDate: widget.store.personalInfo.lastPeriodDate,
+      workoutWeekdays: widget.store.personalInfo.workoutWeekdays,
     );
 
     try {

@@ -17,7 +17,8 @@ class AiBubble extends StatefulWidget {
 }
 
 class _AiBubbleState extends State<AiBubble> {
-  Offset _offset = const Offset(300, 520); // 初始位置,用户可以拖到别处
+  static const double _bubbleSize = 60;
+  Offset? _offset; // null直到第一次build拿到屏幕尺寸,算出右下角默认位置;之后用户可以拖到别处
 
   void _openChat(BuildContext context) {
     Navigator.push(
@@ -35,18 +36,23 @@ class _AiBubbleState extends State<AiBubble> {
     final settings = widget.aiStore.settings;
     final iconOption = aiIconByKey(settings.iconKey);
     final screenSize = MediaQuery.of(context).size;
+    final safeBottom = MediaQuery.of(context).padding.bottom;
+
+    // 默认停在右下角(导航栏上方留够空间),之后用户拖过的位置才会覆盖这个默认值。
+    _offset ??= Offset(screenSize.width - _bubbleSize - 16, screenSize.height - _bubbleSize - safeBottom - 96);
+    final offset = _offset!;
 
     return Positioned(
-      left: _offset.dx,
-      top: _offset.dy,
+      left: offset.dx,
+      top: offset.dy,
       child: GestureDetector(
         onPanUpdate: (details) {
           setState(() {
-            final next = _offset + details.delta;
+            final next = offset + details.delta;
             // 别让气泡拖出屏幕外(clamp在double上返回的是num,这里用toDouble()转回来)
             _offset = Offset(
-              next.dx.clamp(0.0, screenSize.width - 60).toDouble(),
-              next.dy.clamp(0.0, screenSize.height - 140).toDouble(),
+              next.dx.clamp(0.0, screenSize.width - _bubbleSize).toDouble(),
+              next.dy.clamp(0.0, screenSize.height - _bubbleSize).toDouble(),
             );
           });
         },

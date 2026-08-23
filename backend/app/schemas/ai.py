@@ -35,6 +35,7 @@ class ExerciseResponse(APIModel):
     duration: int | None = None
     rest_seconds: int
     reason: str
+    instructions: str
     video_url: str | None = None
     # Best-effort thumbnail from Pexels (app/services/exercise_image_service.py),
     # keyed off exercise_name. None if PEXELS_API_KEY isn't set or the lookup

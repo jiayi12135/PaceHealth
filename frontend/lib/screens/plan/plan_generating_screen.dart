@@ -1,7 +1,9 @@
 import 'package:flutter/material.dart';
+import '../../models/models.dart';
 import '../../services/api_service.dart';
 import '../../state/profile_store.dart';
 import '../navigation/app_shell.dart';
+import 'assign_workout_days_screen.dart';
 
 /// 问卷刚填完、profile也存好之后过渡的一个loading页:调用/ai/generate-plan生成
 /// 第一份workout plan,生成完(不管成功还是失败)直接把用户带到Plan tab——
@@ -23,13 +25,30 @@ class _PlanGeneratingScreenState extends State<PlanGeneratingScreen> {
   }
 
   Future<void> _generateThenContinue() async {
+    FitnessPlan? plan;
     try {
-      final plan = await ApiService().generatePlan(accessToken: widget.store.accessToken);
+      plan = await ApiService().generatePlan(accessToken: widget.store.accessToken);
       widget.store.setPlan(plan);
     } catch (_) {
       // 生成失败不卡住用户——照样带他进App,Plan tab会显示重试按钮。
     }
-    if (mounted) {
+    if (!mounted) return;
+
+    // 生成成功的话先问一下每个训练日具体放在星期几,再进App;失败就没什么好问的,
+    // 直接进去让Plan tab显示重试入口。
+    if (plan != null) {
+      Navigator.of(context).pushReplacement(
+        MaterialPageRoute(
+          builder: (_) => AssignWorkoutDaysScreen(
+            store: widget.store,
+            plan: plan!,
+            onDone: () => Navigator.of(context).pushReplacement(
+              MaterialPageRoute(builder: (_) => AppShell(store: widget.store, initialIndex: 1)),
+            ),
+          ),
+        ),
+      );
+    } else {
       Navigator.of(context).pushReplacement(
         MaterialPageRoute(builder: (_) => AppShell(store: widget.store, initialIndex: 1)),
       );

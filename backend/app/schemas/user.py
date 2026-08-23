@@ -1,3 +1,5 @@
+from datetime import date
+
 from pydantic import Field
 
 from app.schemas.base import APIModel
@@ -29,6 +31,10 @@ class PersonalInfoData(APIModel):
     injuries: list[str] = Field(default_factory=list)
     surgery_history: list[str] = Field(default_factory=list)
     exercises_to_avoid: list[str] = Field(default_factory=list)
+    # Optional, only meaningful when set — the Home calendar predicts the next
+    # period from this (fixed 28-day assumption, computed in code, not by the
+    # AI) and the same raw fact feeds plan generation + chat context.
+    last_period_date: date | None = None
 
 
 class UserProfileWrite(APIModel):

@@ -32,6 +32,9 @@ class UserPersonalInfo(BaseModel):
     injuries: List[str] = Field(default_factory=list)
     surgeryHistory: List[str] = Field(default_factory=list)
     exercisesToAvoid: List[str] = Field(default_factory=list)
+    # 可选,只有女性用户在Home页选填过末次经期日期才会有值。用来算"离下次预计经期还有几天"
+    # (固定28天周期的粗略假设,backend代码算,不是AI猜),接近/正值经期时给训练计划/聊天一点提示。
+    lastPeriodDate: Optional[date] = None
 
 
 # ---------- 请求体:前端/后端发给这个AI服务的完整数据 ----------
@@ -49,7 +52,8 @@ class Exercise(BaseModel):
     reps: Optional[int] = None       # 力量动作用
     duration: Optional[int] = None   # 有氧/拉伸类动作用,单位秒
     restSeconds: int
-    reason: str  # 为什么给用户推荐这个动作(个性化理由)
+    reason: str  # 为什么给用户推荐这个动作(个性化理由,给用户看的是"为什么适合你")
+    instructions: str  # 具体怎么做这个动作(给用户看的是"怎么做"),配合Workout Session逐动作全屏页展示
     videoUrl: Optional[str] = None
 
 

@@ -229,10 +229,15 @@ def generate_chat_reply(
     profile: Optional[Profile],
     personal_info: Optional[UserPersonalInfo],
     recent_progress: Optional[ProgressSummary] = None,
+    adherence_note: Optional[str] = None,
 ) -> str:
-    """调用 Claude API 生成一句聊天回复(纯文字,不强制JSON格式)"""
+    """调用 Claude API 生成一句聊天回复(纯文字,不强制JSON格式)
 
-    system_prompt = build_chat_system_context(profile, personal_info, recent_progress)
+    adherence_note: 由backend从workout_completions算好的一段"最近完成/跳过了哪些训练、
+    跳过原因"的描述文字。跟体重进度一样,AI只读这段现成的事实,不自己编造完成记录。
+    """
+
+    system_prompt = build_chat_system_context(profile, personal_info, recent_progress, adherence_note)
 
     # 把之前的聊天记录转成 Claude API 要求的格式
     # ChatMessage.role 目前只有 "user" / "assistant" 两种,跟 Claude API 的角色名正好一致

@@ -9,10 +9,46 @@ Prompt 设计。
    多输出废话、或者JSON格式错误导致backend解析失败。
 """
 
+from datetime import date
 from typing import List, Optional
 
 from app.services.ai.models import Profile, ProgressSummary, UserPersonalInfo
 from app.services.ai.report_calculator import ReportStats
+
+
+# 固定周期假设,纯粹是给用户一个粗略参考,不是医学预测。跟体重报告的原则一样:
+# 这几个数字(距下次经期还有几天、是否在经期内)全部是Python代码算的,AI只读结果、
+# 不自己推算或编造,也不该把这个当成精确预测讲给用户听。
+_CYCLE_LENGTH_DAYS = 28
+_PERIOD_LENGTH_DAYS = 5
+
+
+def describe_cycle_context(last_period_date: Optional[date], today: Optional[date] = None) -> Optional[str]:
+    """返回一行给AI看的经期背景信息,没有填过末次经期日期就返回None(不提这件事)。"""
+    if last_period_date is None:
+        return None
+    today = today or date.today()
+    days_since = (today - last_period_date).days
+    if days_since < 0:
+        return None  # 日期填反了/在未来,数据不可信,不使用
+
+    days_into_cycle = days_since % _CYCLE_LENGTH_DAYS
+    days_until_next = _CYCLE_LENGTH_DAYS - days_into_cycle
+    on_period = days_into_cycle < _PERIOD_LENGTH_DAYS
+    near_period = (not on_period) and days_until_next <= 3
+
+    if on_period:
+        state = f"currently on day {days_into_cycle + 1} of her period (based on a fixed {_CYCLE_LENGTH_DAYS}-day cycle estimate)"
+    elif near_period:
+        state = f"her period is estimated to start in {days_until_next} day(s) (fixed {_CYCLE_LENGTH_DAYS}-day cycle estimate, not a medical prediction)"
+    else:
+        return None  # 不在经期、也不接近,不用往context里加这段,减少噪音
+
+    return (
+        f"Menstrual cycle note: {state}. If relevant, you may gently suggest lower-intensity "
+        "training or extra rest around this time — but don't be preachy about it, and don't treat "
+        "this estimate as precise or medical advice."
+    )
 
 
 # 所有文字最终都是直接塞进Flutter App里的普通文本框显示,不会经过markdown渲染器,
@@ -63,6 +99,7 @@ PLAN_SYSTEM_PROMPT = """你是PaceHealth App里的专业健身教练AI,负责根
 2. 只推荐用户当前可用器材范围内的动作(包括徒手/无器材动作)。
 3. 计划要符合用户填写的每周运动频率和每次时长,不要超出。
 4. 每个动作都要给出推荐理由(reason),说明为什么这个动作适合这个用户(结合他的目标、身体状况),让用户理解"为什么"而不只是"做什么"——但必须严格控制在一句话、15个英文单词以内,不要写成一段话。这段文字要显示在一张小卡片上,太长会被截断/挤爆UI。
+4b. 每个动作还要单独给出instructions字段,说明具体怎么做这个动作(标准姿势、动作要领、呼吸节奏等),这段是给用户在训练时对照着做的操作步骤,跟reason(为什么推荐)是两个不同的字段、不要写重复内容。控制在2-3句短句以内,用初学者能看懂的语言,不要用专业术语堆砌;这段文字会显示在训练时的全屏动作页面上,足够详细到让一个没做过这个动作的人也能照着做对。
 5. 输出语气专业、鼓励、易懂,避免使用过于专业的术语而不解释。
 6. 你不是医生,如果用户的伤病情况看起来比较严重或复杂,在reason中可以建议用户先咨询医生或物理治疗师,但仍然要给出一个保守安全的动作建议,不能拒绝生成计划。
 7. 你生成的是"每周重复训练模板",不是有起止日期的多周计划——我们目前没有为你提供计划要持续几周、或者每周该如何逐步加大强度的信息。所以 planName 里绝对不能出现具体的周数(比如"8周计划"这种说法),因为这个数字是你编的,没有依据。请把 planName 取成描述这份计划目标和方式的名字,不要提周数,例如"减脂塑形每周训练模板"或"居家力量与体态改善周计划"。
@@ -126,6 +163,7 @@ def build_chat_system_context(
     profile: Optional[Profile],
     personal_info: Optional[UserPersonalInfo],
     recent_progress: Optional[ProgressSummary] = None,
+    adherence_note: Optional[str] = None,
 ) -> str:
     """如果有用户资料,拼一段背景信息附加在system prompt后面,让AI回答时知道这个用户的情况。
 
@@ -152,6 +190,9 @@ def build_chat_system_context(
             lines.append(f"手术史: {', '.join(personal_info.surgeryHistory)}")
         if personal_info.exercisesToAvoid:
             lines.append(f"需要避免的动作: {', '.join(personal_info.exercisesToAvoid)}")
+        cycle_note = describe_cycle_context(personal_info.lastPeriodDate)
+        if cycle_note:
+            lines.append(cycle_note)
     if recent_progress is not None and recent_progress.deltaKg is not None:
         period_label = "本周" if recent_progress.periodType == "weekly" else "本月"
         progress_pct = f"{recent_progress.progressToGoalPercent}%" if recent_progress.progressToGoalPercent is not None else "未知"
@@ -159,6 +200,15 @@ def build_chat_system_context(
             f"最近的体重进度({period_label}): 变化 {recent_progress.deltaKg} kg,朝目标前进 {progress_pct}。"
             "如果用户问跟进度/坚持相关的问题,或者你判断适合主动提一句,可以结合这个数据给出鼓励或建议,"
             "但不要重新计算或编造这个数字之外的其他数字。"
+        )
+    if adherence_note:
+        lines.append(
+            f"最近的训练完成情况(由系统记录,不是用户口述): {adherence_note} "
+            "如果用户在讨论计划安排、动力、或者为什么坚持不下去,结合这些记录给建议——"
+            "比如经常因为'太累'/'too difficult'跳过,可以建议缩短时长或降低强度;因为'没时间'跳过,可以建议换到别的时段或拆分训练;"
+            "因为'equipment unavailable'跳过,可以建议换成不需要那个器材的替代动作;"
+            "因为'pain or discomfort'跳过,要认真对待——不要在聊天里继续推荐同一个动作,建议用户点重新生成计划时避开它,必要时建议咨询医生或物理治疗师。"
+            "只引用这里列出的记录,不要编造额外的训练历史。"
         )
 
     return CHAT_SYSTEM_PROMPT + "\n".join(lines)

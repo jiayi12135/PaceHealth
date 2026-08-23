@@ -3,7 +3,6 @@ import 'package:flutter/material.dart';
 import '../../state/ai_assistant_store.dart';
 import '../../state/profile_store.dart';
 import '../ai/ai_customize_screen.dart';
-import '../equipment/equipment_scan_screen.dart';
 import '../personal_information/personal_information_screen.dart';
 import '../settings/settings_screen.dart';
 
@@ -52,7 +51,6 @@ class ProfileAreaScreen extends StatelessWidget {
           const SizedBox(height: 8),
           _MenuCard(children: [
             _MenuItem(icon: Icons.person_outline, title: 'Personal information', subtitle: 'Your health and fitness details', onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => PersonalInformationScreen(store: store)))),
-            _MenuItem(icon: Icons.camera_alt_outlined, title: 'Scan equipment', subtitle: 'Identify gym equipment from a photo', onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => EquipmentScanScreen(store: store)))),
           ]),
           const SizedBox(height: 20),
           Text('Preferences', style: Theme.of(context).textTheme.titleSmall?.copyWith(fontWeight: FontWeight.bold)),

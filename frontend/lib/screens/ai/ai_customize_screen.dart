@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import '../../models/ai_assistant.dart';
 import '../../state/ai_assistant_store.dart';
+import '../../widgets/app_toast.dart';
 
 /// 让用户给AI起名字、选一个预设头像。保存后本地记住(见 ai_assistant_store.dart)。
 class AiCustomizeScreen extends StatefulWidget {
@@ -32,7 +33,7 @@ class _AiCustomizeScreenState extends State<AiCustomizeScreen> {
     final name = _nameController.text.trim().isEmpty ? 'Coach' : _nameController.text.trim();
     await widget.aiStore.save(name: name, iconKey: _selectedIconKey);
     if (mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Saved!')));
+      showAppToast(context, 'Saved!');
       Navigator.pop(context);
     }
   }

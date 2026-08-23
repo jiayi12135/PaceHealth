@@ -55,6 +55,7 @@ def to_ai_personal_info(info: PersonalInfoData) -> ai_models.UserPersonalInfo:
         injuries=info.injuries,
         surgeryHistory=info.surgery_history,
         exercisesToAvoid=info.exercises_to_avoid,
+        lastPeriodDate=info.last_period_date,
     )
 
 
@@ -81,6 +82,7 @@ def to_workout_plan_response(
                 duration=exercise.duration,
                 rest_seconds=exercise.restSeconds,
                 reason=exercise.reason,
+                instructions=exercise.instructions,
                 video_url=exercise.videoUrl,
                 image_url=images.get(exercise.exerciseName),
             )

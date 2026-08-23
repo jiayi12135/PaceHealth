@@ -103,8 +103,96 @@ class ApiService {
     }
     return FitnessPlan.fromJson(jsonDecode(response.body) as Map<String, dynamic>);
   }
-  Future<Report> getReport({required String periodType, required Profile profile}) async => _mockReport(periodType);
-  Future<void> addWeightRecord(WeightRecord record) async {}
+  /// 周报/月报:数字全部是backend代码算好的,AI只负责把数字写成一段总结文字。
+  Future<Report> getReport({required String periodType, String? accessToken}) async {
+    if (ApiConfig.useMockData) {
+      await Future.delayed(const Duration(milliseconds: 500));
+      return _mockReport(periodType);
+    }
+
+    final response = await http.post(
+      Uri.parse('${ApiConfig.baseUrl}/ai/report'),
+      headers: {
+        'Content-Type': 'application/json',
+        if (accessToken != null) 'Authorization': 'Bearer $accessToken',
+      },
+      body: jsonEncode({'periodType': periodType}),
+    );
+    if (response.statusCode != 200) {
+      throw Exception('Could not load your report (${response.statusCode}): ${response.body}');
+    }
+    return Report.fromJson(jsonDecode(response.body) as Map<String, dynamic>);
+  }
+
+  /// 记录一条体重。recordedAt只取日期部分(backend按date存)。
+  Future<void> addWeightRecord({required double weightKg, DateTime? recordedAt, String? accessToken}) async {
+    if (ApiConfig.useMockData) return;
+
+    final when = recordedAt ?? DateTime.now();
+    final dateOnly = '${when.year.toString().padLeft(4, '0')}-${when.month.toString().padLeft(2, '0')}-${when.day.toString().padLeft(2, '0')}';
+    final response = await http.post(
+      Uri.parse('${ApiConfig.baseUrl}/weights'),
+      headers: {
+        'Content-Type': 'application/json',
+        if (accessToken != null) 'Authorization': 'Bearer $accessToken',
+      },
+      body: jsonEncode({'weightKg': weightKg, 'recordedAt': dateOnly}),
+    );
+    if (response.statusCode != 201 && response.statusCode != 200) {
+      throw Exception('Could not save your weight (${response.statusCode}): ${response.body}');
+    }
+  }
+
+  /// 记录一次训练结果:完成(带时长)或跳过(必须带原因——AI聊天会读这些原因来调整建议)。
+  /// exerciseLog/feedback是新加的逐动作训练页数据:每个动作是否被跳过/为什么、预计vs实际
+  /// 用了多久,以及(只有session看起来"异常"时才会有的)结束时反馈问卷的答案。都是可选的,
+  /// 不传就是原来day级别的简单记录,后端两种都接受。
+  Future<void> recordWorkout({
+    required String planId,
+    required String day,
+    String status = 'completed',
+    String? reason,
+    int? durationSeconds,
+    List<Map<String, dynamic>>? exerciseLog,
+    Map<String, dynamic>? feedback,
+    String? accessToken,
+  }) async {
+    if (ApiConfig.useMockData) return;
+
+    final response = await http.post(
+      Uri.parse('${ApiConfig.baseUrl}/workouts/completions'),
+      headers: {
+        'Content-Type': 'application/json',
+        if (accessToken != null) 'Authorization': 'Bearer $accessToken',
+      },
+      body: jsonEncode({
+        'planId': planId,
+        'day': day,
+        'status': status,
+        if (reason != null) 'reason': reason,
+        if (durationSeconds != null) 'durationSeconds': durationSeconds,
+        if (exerciseLog != null) 'exerciseLog': exerciseLog,
+        if (feedback != null) 'feedback': feedback,
+      }),
+    );
+    if (response.statusCode != 201 && response.statusCode != 200) {
+      throw Exception('Could not record the workout (${response.statusCode}): ${response.body}');
+    }
+  }
+
+  /// 最近N天的训练完成/跳过记录,给Report页面的完成率图表+历史列表用。
+  Future<List<WorkoutCompletion>> fetchRecentWorkouts({int days = 14, String? accessToken}) async {
+    if (ApiConfig.useMockData) return [];
+
+    final response = await http.get(
+      Uri.parse('${ApiConfig.baseUrl}/workouts/completions?days=$days'),
+      headers: {if (accessToken != null) 'Authorization': 'Bearer $accessToken'},
+    );
+    if (response.statusCode != 200) {
+      throw Exception('Could not load workout history (${response.statusCode}): ${response.body}');
+    }
+    return (jsonDecode(response.body) as List).map((e) => WorkoutCompletion.fromJson(e as Map<String, dynamic>)).toList();
+  }
 
   /// 发一条消息给AI聊天,拿到回复文字。
   /// history 需要按时间顺序传入之前的对话(最新的消息不用带进history,单独传在message里)。

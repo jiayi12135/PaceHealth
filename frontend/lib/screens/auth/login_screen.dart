@@ -4,6 +4,7 @@ import '../../state/profile_store.dart';
 import '../../services/api_service.dart';
 import '../navigation/app_shell.dart';
 import '../onboarding/questionnaire_screen.dart';
+import '../../widgets/app_toast.dart';
 
 class LoginScreen extends StatefulWidget {
   final ProfileStore store;
@@ -38,25 +39,28 @@ class _LoginScreenState extends State<LoginScreen> {
         password: _password.text,
         register: _registering,
       );
-      widget.store.signIn(session.email, accessToken: session.accessToken);
-
-      // 登录后看这个用户是不是已经填过问卷,填过的话直接跳过问卷。查失败也不阻断登录,
-      // 顶多是又让他填一次问卷,不是致命错误。
+      // 关键顺序:先查有没有存过的问卷资料,这一步还没碰store、不会触发任何notify。
+      // 查完(不管有没有查到)才一次性调用signIn()+hydrate(),两次notify中间不await——
+      // 这样main.dart那个反应式的MaterialApp.home只会用"最终状态"重新求值一次。
+      // 之前的bug就出在这里:signIn()单独先notify一次时completed还是false,
+      // main.dart会把home换成QuestionnaireScreen,把这个正在等fetchMyProfile结果的
+      // LoginScreen直接dispose掉——等fetchMyProfile真的查到资料时,mounted已经是
+      // false,hydrate()被静默跳过,completed永远没机会变成true,所以每次登录都被
+      // 送去问卷,即使profile其实早就存在(backend那边GET /users/me其实是200的)。
+      SavedProfile? saved;
       try {
-        final saved = await api.fetchMyProfile(accessToken: session.accessToken);
-        if (saved != null && mounted) {
-          widget.store.hydrate(profile: saved.profile, personalInfo: saved.personalInfo);
-        }
+        saved = await api.fetchMyProfile(accessToken: session.accessToken);
       } catch (_) {
-        // ignore — falls back to showing the questionnaire
+        saved = null; // 查失败就当没填过处理,不阻断登录,顶多是又让他填一次问卷
       }
 
-      // 不能只靠main.dart里那个根据store状态反应式切换MaterialApp.home的逻辑——
-      // 这里signIn()先notify了一次(这时completed还是false,如果只看这次通知会先
-      // 跳去问卷),hydrate()是在await拿到profile之后才notify的第二次,但这时候
-      // Navigator已经把第一次的那个route显示出来了,单纯改MaterialApp.home不会
-      // 再把它换掉(跟之前"退出登录没反应"是同一个坑)。所以登录这一步结束后,
-      // 用确定的store状态显式导航一次,不依赖reactive rebuild。
+      widget.store.signIn(session.email, accessToken: session.accessToken);
+      if (saved != null) {
+        widget.store.hydrate(profile: saved.profile, personalInfo: saved.personalInfo);
+      }
+
+      // 即使上面已经让store状态一步到位,还是显式导航一次而不是依赖reactive rebuild——
+      // 更可靠,行为也更好预测。
       if (mounted) {
         Navigator.of(context).pushAndRemoveUntil(
           MaterialPageRoute(
@@ -66,7 +70,25 @@ class _LoginScreenState extends State<LoginScreen> {
         );
       }
     } catch (error) {
-      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(error.toString().replaceFirst('Exception: ', ''))));
+      if (!mounted) return;
+      final message = error.toString().replaceFirst('Exception: ', '');
+      // 邮箱确认这种情况不是"失败",是流程的一步——用弹窗讲清楚要去邮箱点确认链接,
+      // 比一条一闪而过的SnackBar明显得多。
+      if (message.toLowerCase().contains('confirm')) {
+        showDialog<void>(
+          context: context,
+          builder: (context) => AlertDialog(
+            icon: const Icon(Icons.mark_email_unread_outlined, size: 40),
+            title: const Text('Check your email'),
+            content: Text(
+              'We sent a confirmation link to ${_email.text.trim()}. Open your inbox (e.g. Gmail), tap the link, then come back and sign in.',
+            ),
+            actions: [FilledButton(onPressed: () => Navigator.pop(context), child: const Text('Got it'))],
+          ),
+        );
+      } else {
+        showAppToast(context, message, isError: true);
+      }
     } finally {
       if (mounted) setState(() => _submitting = false);
     }

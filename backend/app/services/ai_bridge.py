@@ -4,7 +4,7 @@ so that package can stay a clean, easy-to-diff copy of Stephanie's ai-service
 code rather than getting backend-specific mapping logic mixed into it.
 """
 
-from datetime import date, timedelta
+from datetime import date, datetime, timedelta
 from typing import Literal
 
 from app.schemas.ai import (
@@ -56,6 +56,7 @@ def to_ai_personal_info(info: PersonalInfoData) -> ai_models.UserPersonalInfo:
         surgeryHistory=info.surgery_history,
         exercisesToAvoid=info.exercises_to_avoid,
         lastPeriodDate=info.last_period_date,
+        workoutWeekdays=info.workout_weekdays,
     )
 
 
@@ -63,9 +64,12 @@ def to_workout_plan_response(
     plan_id: str,
     plan: ai_models.WorkoutPlan,
     images: dict[str, str | None] | None = None,
+    created_at: str | date | None = None,
 ) -> WorkoutPlanResponse:
     """`images` is optional (exercise_name -> photo URL or None) so callers that
     don't care about thumbnails — like existing tests — don't need to fake one.
+    `created_at` defaults to now() when not supplied (existing tests/callers that
+    don't have a real DB row to read it from).
     """
     images = images or {}
     return WorkoutPlanResponse(
@@ -73,6 +77,7 @@ def to_workout_plan_response(
         plan_name=plan.planName,
         goal=plan.goal,
         weekly_frequency=plan.weeklyFrequency,
+        created_at=created_at or datetime.now(),
         exercises=[
             ExerciseResponse(
                 day=exercise.day,

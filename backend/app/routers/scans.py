@@ -8,7 +8,7 @@ and only then calls the AI service with the resulting URL.
 from datetime import datetime, timezone
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, UploadFile
+from fastapi import APIRouter, Depends, UploadFile, status
 from postgrest.exceptions import APIError as PostgrestAPIError
 
 from app.dependencies.auth import get_current_user
@@ -135,6 +135,22 @@ async def scan_food(
         raise APIError(502, "Estimated the food but failed to save the scan.", "SCAN_WRITE_FAILED") from exc
 
     return to_food_scan_response(result, scan_id=row["id"], scanned_at=row["created_at"])
+
+
+@router.delete("/food/scans/{scan_id}", status_code=status.HTTP_204_NO_CONTENT)
+def delete_food_scan(
+    scan_id: str,
+    user: Annotated[AuthUser, Depends(get_current_user)],
+    scans: Annotated[FoodScanService, Depends(get_food_scan_service)],
+) -> None:
+    """Lets the user remove a mis-scanned or duplicate entry from today's log."""
+    try:
+        deleted = scans.delete(user.user_id, scan_id)
+    except PostgrestAPIError as exc:
+        raise APIError(502, "Unable to delete this scan.", "SCAN_DELETE_FAILED") from exc
+
+    if not deleted:
+        raise APIError(404, "Scan not found.", "SCAN_NOT_FOUND")
 
 
 @router.get("/food/scans/today", response_model=DailyFoodLogResponse)

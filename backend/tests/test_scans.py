@@ -180,6 +180,28 @@ class TestFoodScan:
         mock_estimate.assert_called_once_with(PUBLIC_URL)
         scan_service.save.assert_called_once_with(USER_ID, PUBLIC_URL, ai_result)
 
+    def test_deletes_a_scan(self) -> None:
+        _override_auth()
+        scan_service = Mock()
+        scan_service.delete.return_value = True
+        app.dependency_overrides[get_food_scan_service] = lambda: scan_service
+
+        response = TestClient(app).delete("/food/scans/scan-1")
+
+        assert response.status_code == 204
+        scan_service.delete.assert_called_once_with(USER_ID, "scan-1")
+
+    def test_deleting_a_missing_scan_returns_404(self) -> None:
+        _override_auth()
+        scan_service = Mock()
+        scan_service.delete.return_value = False
+        app.dependency_overrides[get_food_scan_service] = lambda: scan_service
+
+        response = TestClient(app).delete("/food/scans/does-not-exist")
+
+        assert response.status_code == 404
+        assert response.json()["data"]["errorCode"] == "SCAN_NOT_FOUND"
+
     def test_today_log_sums_calories(self) -> None:
         _override_auth()
         scan_service = Mock()

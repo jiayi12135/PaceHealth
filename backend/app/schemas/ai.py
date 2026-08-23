@@ -16,7 +16,7 @@ the client the way Stephanie's ai-service docs describe for a standalone
 service without its own auth layer.
 """
 
-from datetime import date
+from datetime import date, datetime
 from typing import Literal
 
 from pydantic import Field
@@ -43,12 +43,24 @@ class ExerciseResponse(APIModel):
     image_url: str | None = None
 
 
+class DayAssignmentsUpdate(APIModel):
+    plan_id: str
+    assignments: dict[str, str] = Field(default_factory=dict)
+
+
 class WorkoutPlanResponse(APIModel):
     plan_id: str
     plan_name: str
     goal: str
     weekly_frequency: int
     exercises: list[ExerciseResponse]
+    # planDay ("Day 1") -> weekday ("Mon"), set once the user goes through
+    # AssignWorkoutDaysScreen (see PUT /ai/plan/day-assignments). Null on a
+    # freshly generated plan that hasn't been assigned yet.
+    day_assignments: dict[str, str] | None = None
+    # 这份plan是什么时候生成的——Calendar用来判断"这个日期是在有这份计划之前",
+    # 避免把用户开号之前(比如周四才填问卷,但选了周一)那几天错误地标成missed。
+    created_at: datetime
 
 
 # ---------- chat ----------

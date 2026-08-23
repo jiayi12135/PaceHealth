@@ -3,7 +3,6 @@ import '../../models/models.dart';
 import '../../services/api_service.dart';
 import '../../state/profile_store.dart';
 import '../../widgets/app_toast.dart';
-import 'assign_workout_days_screen.dart';
 import 'workout_session_screen.dart';
 
 /// Plan tab: 显示backend根据这个用户的profile+personalInfo(伤病/器材等)生成的workout plan。
@@ -30,8 +29,28 @@ class _PlanScreenState extends State<PlanScreen> {
   void initState() {
     super.initState();
     _loadRecent();
-    // 老用户(比如登录后hydrate回来的,没经过这次问卷)可能还没有plan,进这页自动补一次。
-    if (widget.store.plan == null) _generate();
+    // 老用户(比如登录后hydrate回来的,没经过这次问卷)可能还没有plan,进这页自动补一次——
+    // 但先试试backend有没有存过之前生成的(GET /ai/plan),真的一份都没有才生成新的,
+    // 不然每次store.plan只是"这次冷启动还没恢复"就白白再生成一份、多花AI token。
+    if (widget.store.plan == null) _loadOrGenerate();
+  }
+
+  Future<void> _loadOrGenerate() async {
+    setState(() {
+      _loading = true;
+      _error = null;
+    });
+    try {
+      final existing = await _api.fetchLatestPlan(accessToken: widget.store.accessToken);
+      if (existing != null) {
+        widget.store.setPlan(existing);
+        if (mounted) setState(() => _loading = false);
+        return;
+      }
+    } catch (_) {
+      // 查不到/查失败都当作"没有",往下走生成流程
+    }
+    await _generate();
   }
 
   Future<void> _loadRecent() async {
@@ -56,14 +75,18 @@ class _PlanScreenState extends State<PlanScreen> {
     try {
       final plan = await _api.generatePlan(accessToken: widget.store.accessToken);
       widget.store.setPlan(plan);
-      if (mounted) {
-        // 生成了新计划,问一下每个训练日具体放星期几(可能跟之前的天数不一样了)。
-        await Navigator.push(
-          context,
-          MaterialPageRoute(
-            builder: (_) => AssignWorkoutDaysScreen(store: widget.store, plan: plan, onDone: () => Navigator.pop(context)),
-          ),
-        );
+      // 问卷已经问过想哪几天练了(store.workoutDays),直接按顺序自动分配到星期几,
+      // 不用再单独问一遍——分配之后哪天练什么用户随时能在Calendar里调(只要那天
+      // 还没到、而且只能换到同一周内的其他天)。
+      final assignments = autoAssignWorkoutDays(plan: plan, suggestedWeekdays: widget.store.workoutDays, existing: widget.store.workoutDayAssignments);
+      widget.store.setWorkoutDayAssignments(assignments);
+      final planId = plan.planId;
+      if (planId != null) {
+        try {
+          await _api.saveDayAssignments(planId: planId, assignments: assignments, accessToken: widget.store.accessToken);
+        } catch (_) {
+          // 存后端失败不拦着用户——本地状态已经是对的了
+        }
       }
     } catch (e) {
       if (mounted) setState(() => _error = "Couldn't generate your plan. Check your connection and try again.");
@@ -80,7 +103,7 @@ class _PlanScreenState extends State<PlanScreen> {
       body: _loading
           ? const Center(child: CircularProgressIndicator())
           : _error != null
-              ? _ErrorState(message: _error!, onRetry: _generate)
+              ? _ErrorState(message: _error!, onRetry: _loadOrGenerate)
               : plan == null
                   ? _EmptyState(onGenerate: _generate)
                   : _PlanView(plan: plan, store: widget.store, recentByDay: _recentByDay, onRecorded: _loadRecent),
@@ -169,16 +192,17 @@ class _PlanView extends StatelessWidget {
         ),
         const SizedBox(height: 20),
         ...dayKeys.map((day) {
-          // 星期几优先用AssignWorkoutDaysScreen里存的明确分配,没有的话(比如老数据)
+          // 星期几优先用自动分配(或用户Reschedule调整过)的映射,没有的话(比如老数据)
           // 才退回问卷里选的顺序。
           final displayDay = store.workoutDayAssignments[day] ?? day;
-          return _DaySection(
+          return DaySection(
             store: store,
             day: day,
             displayDay: displayDay,
             exercises: byDay[day]!,
             completion: recentByDay[day],
             onRecorded: onRecorded,
+            showReschedule: false,
           );
         }),
       ],
@@ -186,7 +210,9 @@ class _PlanView extends StatelessWidget {
   }
 }
 
-class _DaySection extends StatelessWidget {
+/// 公开(不带下划线)是因为Home页的Calendar page(calendar_screen.dart)也要按星期几
+/// 顺序复用这一整块UI(Start/Incomplete/Reschedule/完成状态全部一致),不想维护两份。
+class DaySection extends StatelessWidget {
   final ProfileStore store;
   final String day;
   final String displayDay;
@@ -195,13 +221,17 @@ class _DaySection extends StatelessWidget {
   // 改显示一个"已经是历史记录了"的状态条。
   final WorkoutCompletion? completion;
   final VoidCallback onRecorded;
-  const _DaySection({
+  // Reschedule入口只保留在Calendar页(挪动到哪一天是个"日期"概念,Calendar本来就是
+  // 按真实日期排布的,改起来更直观)——Plan页传false隐藏这个按钮,避免两个入口。
+  final bool showReschedule;
+  const DaySection({
     required this.store,
     required this.day,
     required this.displayDay,
     required this.exercises,
     required this.completion,
     required this.onRecorded,
+    this.showReschedule = true,
   });
 
   Future<void> _skip(BuildContext context) async {
@@ -317,8 +347,17 @@ class _DaySection extends StatelessWidget {
       ),
     );
     if (chosen == null) return;
-    store.setWorkoutDayAssignments({...store.workoutDayAssignments, day: chosen});
+    final updated = {...store.workoutDayAssignments, day: chosen};
+    store.setWorkoutDayAssignments(updated);
     onRecorded();
+    final planId = store.plan?.planId;
+    if (planId != null) {
+      try {
+        await ApiService().saveDayAssignments(planId: planId, assignments: updated, accessToken: store.accessToken);
+      } catch (_) {
+        // 本地已经改好了,存后端失败就不打扰用户——顶多下次重启这条改动没保留住。
+      }
+    }
   }
 
   @override
@@ -335,7 +374,7 @@ class _DaySection extends StatelessWidget {
                     style: Theme.of(context).textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w800),
                   ),
                 ),
-                if (completion == null && _canReschedule)
+                if (completion == null && _canReschedule && showReschedule)
                   IconButton(
                     tooltip: 'Reschedule',
                     onPressed: () => _reschedule(context),
@@ -368,7 +407,7 @@ class _DaySection extends StatelessWidget {
             ),
             Text(_daySummary(), style: TextStyle(color: Colors.grey.shade600, fontSize: 12)),
             const SizedBox(height: 8),
-            ...exercises.map((e) => _ExerciseTile(exercise: e, injuries: store.personalInfo.injuries)),
+            ...exercises.map((e) => ExerciseTile(exercise: e, injuries: store.personalInfo.injuries)),
           ],
         ),
       );
@@ -402,10 +441,12 @@ class _CompletionBadge extends StatelessWidget {
   }
 }
 
-class _ExerciseTile extends StatelessWidget {
+/// 公开(不带下划线)是因为Calendar page(calendar_screen.dart)看别的星期/月份的
+/// 只读预览也要用到同一张卡片(不带Start/Incomplete按钮的那种场景)。
+class ExerciseTile extends StatelessWidget {
   final Exercise exercise;
   final List<String> injuries;
-  const _ExerciseTile({required this.exercise, this.injuries = const []});
+  const ExerciseTile({required this.exercise, this.injuries = const []});
 
   /// 如果这个动作的推荐理由里提到了用户的受伤部位(说明AI是绕着伤病挑的动作),
   /// 返回那个部位名,用来在卡片上显示"Adapted for your knee"这种角标。

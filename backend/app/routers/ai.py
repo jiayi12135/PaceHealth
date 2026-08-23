@@ -18,6 +18,7 @@ from app.errors import APIError
 from app.schemas.ai import (
     ChatRequest,
     ChatResponse,
+    DayAssignmentsUpdate,
     MealPlanRequest,
     MealPlanResponse,
     ReportRequest,
@@ -110,20 +111,58 @@ def generate_plan(
     except Exception as exc:  # Anthropic SDK errors, malformed tool_use, etc.
         raise APIError(502, "The AI service failed to generate a plan.", "AI_REQUEST_FAILED") from exc
 
-    try:
-        plan_id = plans.save(user.user_id, plan)
-    except PostgrestAPIError as exc:
-        raise APIError(502, "Generated the plan but failed to save it.", "PLAN_WRITE_FAILED") from exc
-
     # Best-effort — a Pexels hiccup should never fail an otherwise-successful
     # plan generation, so guard this even though fetch_exercise_image_urls
-    # already catches its own errors internally.
+    # already catches its own errors internally. Fetched *before* saving (unlike
+    # before) so the thumbnail URLs can be persisted alongside the exercise rows —
+    # otherwise reloading a saved plan later (GET /ai/plan, e.g. after a restart)
+    # would have no image_url to read back.
     try:
         images = fetch_exercise_image_urls(exercise.exerciseName for exercise in plan.exercises)
     except Exception:  # noqa: BLE001
         images = {}
 
-    return to_workout_plan_response(plan_id, plan, images)
+    try:
+        plan_id, created_at = plans.save(user.user_id, plan, images)
+    except PostgrestAPIError as exc:
+        raise APIError(502, "Generated the plan but failed to save it.", "PLAN_WRITE_FAILED") from exc
+
+    return to_workout_plan_response(plan_id, plan, images, created_at=created_at)
+
+
+@router.get("/plan", response_model=WorkoutPlanResponse)
+def latest_plan(
+    user: Annotated[AuthUser, Depends(get_current_user)],
+    plans: Annotated[PlanService, Depends(get_plan_service)],
+) -> WorkoutPlanResponse:
+    """Most recently generated plan for this user, so a restored session (see the
+    frontend's session-persistence work) doesn't land with an empty Home/Calendar/
+    Plan just because the plan itself used to only live in the app's memory."""
+    try:
+        plan = plans.get_latest(user.user_id)
+    except PostgrestAPIError as exc:
+        raise APIError(502, "Unable to load your plan.", "PLAN_READ_FAILED") from exc
+
+    if plan is None:
+        raise APIError(404, "No plan generated yet.", "PLAN_NOT_FOUND")
+    return plan
+
+
+@router.put("/plan/day-assignments", status_code=status.HTTP_204_NO_CONTENT)
+def save_day_assignments(
+    payload: DayAssignmentsUpdate,
+    user: Annotated[AuthUser, Depends(get_current_user)],
+    plans: Annotated[PlanService, Depends(get_plan_service)],
+) -> None:
+    """planDay -> weekday map from AssignWorkoutDaysScreen / Plan tab's reschedule,
+    persisted so it survives a restart alongside the plan itself."""
+    try:
+        updated = plans.save_day_assignments(user.user_id, payload.plan_id, payload.assignments)
+    except PostgrestAPIError as exc:
+        raise APIError(502, "Unable to save your schedule.", "DAY_ASSIGNMENTS_WRITE_FAILED") from exc
+
+    if not updated:
+        raise APIError(404, "Plan not found.", "PLAN_NOT_FOUND")
 
 
 @router.post("/chat", response_model=ChatResponse)

@@ -32,8 +32,24 @@ class FitnessPlan {
   final String planName, goal;
   final int weeklyFrequency;
   final List<Exercise> exercises;
-  const FitnessPlan({this.planId, required this.planName, required this.goal, required this.weeklyFrequency, required this.exercises});
-  factory FitnessPlan.fromJson(Map<String, dynamic> j) => FitnessPlan(planId: j['planId'] as String?, planName: j['planName'], goal: j['goal'], weeklyFrequency: j['weeklyFrequency'], exercises: (j['exercises'] as List).map((e) => Exercise.fromJson(e)).toList());
+  // planDay("Day 1") -> weekday("Mon"),从backend存的ai_plans.day_assignments读回来的——
+  // 重启/重新登录后能恢复"哪天排了哪个训练日",不用重新自动分配一遍。
+  // 刚生成、还没分配过的plan这里是空map。
+  final Map<String, String> dayAssignments;
+  // 这份plan是什么时候生成的——Calendar用它判断"这个日期是不是在有这份计划之前",
+  // 避免把用户开号之前(比如周四才填问卷)那几天错误地标成missed。没有的话(理论上
+  // 不该发生,backend现在一定会给)兜底成现在,行为等同于"从今天才开始有计划"。
+  final DateTime createdAt;
+  FitnessPlan({this.planId, required this.planName, required this.goal, required this.weeklyFrequency, required this.exercises, this.dayAssignments = const {}, DateTime? createdAt}) : createdAt = createdAt ?? DateTime.now();
+  factory FitnessPlan.fromJson(Map<String, dynamic> j) => FitnessPlan(
+        planId: j['planId'] as String?,
+        planName: j['planName'],
+        goal: j['goal'],
+        weeklyFrequency: j['weeklyFrequency'],
+        exercises: (j['exercises'] as List).map((e) => Exercise.fromJson(e)).toList(),
+        dayAssignments: (j['dayAssignments'] as Map?)?.cast<String, String>() ?? const {},
+        createdAt: j['createdAt'] != null ? DateTime.tryParse(j['createdAt'] as String) : null,
+      );
 }
 
 class WorkoutCompletion {

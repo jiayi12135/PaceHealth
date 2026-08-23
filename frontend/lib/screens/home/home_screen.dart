@@ -1,15 +1,21 @@
 import 'package:flutter/material.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import '../../models/models.dart';
 import '../../models/profile.dart';
 import '../../services/api_service.dart';
 import '../../state/profile_store.dart';
 import '../../theme.dart';
 import '../../widgets/app_toast.dart';
+import 'calendar_screen.dart';
 
 // 固定周期假设,跟backend那份(app/services/ai/prompts.py describe_cycle_context)完全对齐——
 // 前端这份只是为了能在Home页立刻显示,不用等一次网络请求;真正喂给AI的那份是backend自己算的。
 const _cycleLengthDays = 28;
 const _periodLengthDays = 5;
+// 预测的经期开始日到了之后,主动问用户"来了吗"的确认窗口——预测日当天+接下来2天,
+// 一共3天,因为实际来的日子经常会比预测晚一两天,不用卡死在预测当天才问一次。
+const _confirmWindowDays = 3;
+const _kPeriodConfirmDismissedPrefix = 'ph_period_confirm_dismissed_';
 
 class HomeScreen extends StatefulWidget {
   final ProfileStore store;
@@ -42,20 +48,35 @@ class _HomeScreenState extends State<HomeScreen> {
     }
   }
 
+  /// Streak按"排定的训练日"算,不是按自然日连续算——不然一周3-5练的计划,中间的
+  /// 休息日会把streak天天打断,永远只显示1。休息日(非训练日)直接跳过、不算数也不
+  /// 打断;只有"排定要练的那天却没完成"才会把streak断掉。之前的plan换过/重新生成过
+  /// 也没关系,workoutDayAssignments会保留下来(见autoAssignWorkoutDays),而且
+  /// _recent本来就没有按plan过滤,以前的完成记录一样算数。
   int get _streak {
     final completedDates = _recent.where((w) => w.status == 'completed').map((w) {
       final d = w.completedAt.toLocal();
       return DateTime(d.year, d.month, d.day);
     }).toSet();
 
-    var cursor = DateTime.now();
-    cursor = DateTime(cursor.year, cursor.month, cursor.day);
-    // 今天还没打卡的话不算断掉,从昨天开始数;今天已经打卡了就从今天开始数。
-    if (!completedDates.contains(cursor)) cursor = cursor.subtract(const Duration(days: 1));
+    final now = DateTime.now();
+    final today = DateTime(now.year, now.month, now.day);
+    final scheduledWeekdays = widget.store.workoutDayAssignments.values.toSet();
 
     var streak = 0;
-    while (completedDates.contains(cursor)) {
-      streak++;
+    var cursor = today;
+    // 最多回看35天,跟_loadStreak拉的历史范围对齐(也避免万一没有排定训练日时死循环)。
+    for (var i = 0; i < 35; i++) {
+      // 没有排定过训练日(比如还没生成过plan)就退回"每天都算"的老逻辑。
+      final isScheduledDay = scheduledWeekdays.isEmpty || scheduledWeekdays.contains(kWeekdays[cursor.weekday - 1]);
+      if (isScheduledDay) {
+        if (completedDates.contains(cursor)) {
+          streak++;
+        } else if (cursor != today) {
+          break; // 排定的训练日、已经过去了、却没完成记录——streak在这里断掉
+        }
+        // cursor == today 且今天还没练:不算断,今天先跳过继续往前看昨天
+      }
       cursor = cursor.subtract(const Duration(days: 1));
     }
     return streak;
@@ -122,7 +143,10 @@ class _HomeScreenState extends State<HomeScreen> {
             ),
           ),
           const SizedBox(height: 20),
-          _WeeklyCalendarCard(store: widget.store, onDayTap: () => widget.onNavigateToTab(1)),
+          _WeeklyCalendarCard(
+            store: widget.store,
+            onDayTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => CalendarScreen(store: widget.store))),
+          ),
           const SizedBox(height: 14),
           _StreakCard(streak: _streak, loading: _loadingStreak),
           if (isFemale) ...[
@@ -275,6 +299,10 @@ class _PeriodCard extends StatefulWidget {
 
 class _PeriodCardState extends State<_PeriodCard> {
   bool _saving = false;
+  // 每个"预测周期开始日"独立判断有没有被dismiss过——SharedPreferences里存的key
+  // 是这个日期,所以"这一轮不问了"不会影响下一轮(28天后)的新预测窗口重新问一次。
+  bool _dismissedThisWindow = false;
+  String? _checkedDismissKey;
 
   Future<void> _pickDate() async {
     final picked = await showDatePicker(
@@ -296,6 +324,7 @@ class _PeriodCardState extends State<_PeriodCard> {
       surgeryHistory: info.surgeryHistory,
       exercisesToAvoid: info.exercisesToAvoid,
       lastPeriodDate: dateStr,
+      workoutWeekdays: info.workoutWeekdays,
     );
     try {
       await ApiService().saveMyProfile(profile: widget.store.profile, personalInfo: updated, accessToken: widget.store.accessToken);
@@ -331,13 +360,76 @@ class _PeriodCardState extends State<_PeriodCard> {
         ],
       );
 
+  /// 把'yyyy-MM-dd'解析成不带时分秒的DateTime,跟todayOnly统一比较基准,避免时区/
+  /// 时分秒偏差导致差一天。
+  DateTime _dateOnly(DateTime d) => DateTime(d.year, d.month, d.day);
+
+  String _fmtDate(DateTime d) => '${d.year.toString().padLeft(4, '0')}-${d.month.toString().padLeft(2, '0')}-${d.day.toString().padLeft(2, '0')}';
+
+  /// 只在key变了的时候才去读一次SharedPreferences(避免每次build都读)。key是这一轮
+  /// "预测周期开始日"的日期字符串,用户点过"Not yet"就会把这个key存成true,28天后
+  /// 换了新的预测日、key也变了,会重新问一遍,不会被永久静音。
+  void _loadDismissedIfNeeded(String key) {
+    if (_checkedDismissKey == key) return;
+    _checkedDismissKey = key;
+    _dismissedThisWindow = false;
+    SharedPreferences.getInstance().then((prefs) {
+      if (!mounted || _checkedDismissKey != key) return;
+      final dismissed = prefs.getBool('$_kPeriodConfirmDismissedPrefix$key') ?? false;
+      if (dismissed != _dismissedThisWindow) setState(() => _dismissedThisWindow = dismissed);
+    });
+  }
+
+  Future<void> _dismissConfirm(String key) async {
+    setState(() => _dismissedThisWindow = true);
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setBool('$_kPeriodConfirmDismissedPrefix$key', true);
+  }
+
+  Future<void> _confirmPeriodStarted() async {
+    setState(() => _saving = true);
+    final today = _dateOnly(DateTime.now());
+    final info = widget.store.personalInfo;
+    final updated = UserPersonalInfo(
+      availableEquipment: info.availableEquipment,
+      postureIssues: info.postureIssues,
+      injuries: info.injuries,
+      surgeryHistory: info.surgeryHistory,
+      exercisesToAvoid: info.exercisesToAvoid,
+      lastPeriodDate: _fmtDate(today),
+      workoutWeekdays: info.workoutWeekdays,
+    );
+    try {
+      await ApiService().saveMyProfile(profile: widget.store.profile, personalInfo: updated, accessToken: widget.store.accessToken);
+      widget.store.save(profile: widget.store.profile, personalInfo: updated);
+      widget.onChanged();
+      if (mounted) showAppToast(context, 'Thanks — updated your cycle.');
+    } catch (_) {
+      if (mounted) showAppToast(context, "Couldn't save that. Please try again.", isError: true);
+    } finally {
+      if (mounted) setState(() => _saving = false);
+    }
+  }
+
   Widget _summary(BuildContext context, DateTime lastPeriod) {
     final today = DateTime.now();
-    final todayOnly = DateTime(today.year, today.month, today.day);
-    final daysSince = todayOnly.difference(lastPeriod).inDays;
+    final todayOnly = _dateOnly(today);
+    final daysSince = todayOnly.difference(_dateOnly(lastPeriod)).inDays;
     final daysIntoCycle = daysSince % _cycleLengthDays;
     final daysUntilNext = _cycleLengthDays - daysIntoCycle;
     final onPeriod = daysIntoCycle < _periodLengthDays;
+    // 这一轮"预测周期开始日"——只有daysSince跨过了至少一整个28天周期,才算是"预测"出来的
+    // (而不是用户上次实打实记录的那天),才需要主动确认。
+    final predictedCycleStart = todayOnly.subtract(Duration(days: daysIntoCycle));
+    final isPredictedWindow = daysSince >= _cycleLengthDays && daysIntoCycle < _confirmWindowDays;
+
+    if (isPredictedWindow) {
+      final key = _fmtDate(predictedCycleStart);
+      _loadDismissedIfNeeded(key);
+      if (!_dismissedThisWindow) {
+        return _confirmBanner(context, key);
+      }
+    }
 
     final label = onPeriod ? 'Day ${daysIntoCycle + 1} of your period' : 'Period expected in $daysUntilNext day${daysUntilNext > 1 ? 's' : ''}';
 
@@ -358,6 +450,45 @@ class _PeriodCardState extends State<_PeriodCard> {
       ],
     );
   }
+
+  Widget _confirmBanner(BuildContext context, String dismissKey) => Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              const Text('🩸', style: TextStyle(fontSize: 22)),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Text('Did your period start?', style: TextStyle(fontWeight: FontWeight.w700, fontSize: 13)),
+                    Text('Based on your cycle, it was expected around now.', style: TextStyle(color: Colors.grey.shade500, fontSize: 11)),
+                  ],
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 10),
+          Row(
+            children: [
+              Expanded(
+                child: OutlinedButton(
+                  onPressed: _saving ? null : () => _dismissConfirm(dismissKey),
+                  child: const Text('Not yet'),
+                ),
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: FilledButton(
+                  onPressed: _saving ? null : _confirmPeriodStarted,
+                  child: Text(_saving ? '...' : 'Yes, today'),
+                ),
+              ),
+            ],
+          ),
+        ],
+      );
 }
 
 class _QuickCard extends StatelessWidget {

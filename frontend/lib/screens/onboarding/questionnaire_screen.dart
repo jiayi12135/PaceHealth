@@ -613,11 +613,15 @@ class _QuestionnaireState extends State<QuestionnaireScreen> {
       exerciseHabit: outdoorActivities.join(', '),
       exerciseLocation: locations.join(', '),
     );
+    // 问卷选的星期几,按kWeekdays的固定顺序排好(不是用户点选的顺序)——之后生成计划、
+    // 排到日历、以及经期感知逻辑都依赖这个顺序跟Day 1/2/3一一对应。
+    final orderedWorkoutWeekdays = _weekdays.where(workoutDays.contains).toList();
     final info = UserPersonalInfo(
       availableEquipment: {...homeEquipment, ...gymEquipment}.where((e) => e != 'None').toList(),
       injuries: carefulAreas.map((a) => '$a (sensitive area)').toList(),
       postureIssues: postureIssues.toList(),
       surgeryHistory: surgeryHistory.map((s) => '$s surgery').toList(),
+      workoutWeekdays: orderedWorkoutWeekdays,
     );
 
     setState(() => _saving = true);
@@ -627,7 +631,7 @@ class _QuestionnaireState extends State<QuestionnaireScreen> {
       if (companion != null) {
         await AiAssistantStore().save(name: companion!.name, iconKey: companion!.iconKey);
       }
-      widget.store.workoutDays = _weekdays.where(workoutDays.contains).toList();
+      widget.store.workoutDays = orderedWorkoutWeekdays;
       widget.store.save(profile: profile, personalInfo: info);
       // 问卷填完先过渡到一个loading页,在那边生成plan(带着刚存的profile——伤病/
       // 器材都在里面),生成完直接停在Plan tab,而不是回Home再让用户自己点进去。

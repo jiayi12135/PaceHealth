@@ -22,6 +22,9 @@ from app.services.ai.report_calculator import ReportStats
 _CYCLE_LENGTH_DAYS = 28
 _PERIOD_LENGTH_DAYS = 5
 
+# Mon-first,跟前端 kWeekdays 顺序对齐;Python date.weekday() 本来就是 Monday=0。
+_WEEKDAY_INDEX = {"Mon": 0, "Tue": 1, "Wed": 2, "Thu": 3, "Fri": 4, "Sat": 5, "Sun": 6}
+
 
 def describe_cycle_context(last_period_date: Optional[date], today: Optional[date] = None) -> Optional[str]:
     """返回一行给AI看的经期背景信息,没有填过末次经期日期就返回None(不提这件事)。"""
@@ -49,6 +52,66 @@ def describe_cycle_context(last_period_date: Optional[date], today: Optional[dat
         "training or extra rest around this time — but don't be preachy about it, and don't treat "
         "this estimate as precise or medical advice."
     )
+
+
+def describe_period_aware_schedule(
+    last_period_date: Optional[date],
+    workout_weekdays: List[str],
+) -> Optional[str]:
+    """给"生成计划"用的经期感知提示——跟describe_cycle_context不一样的地方是:
+    这个是特意设计成可以放进一份"每周重复使用的模板"里的,而不是聊天里那种一次性的
+    "还有几天/现在第几天"。
+
+    能这样做的关键是:_CYCLE_LENGTH_DAYS=28 正好是4整周(28÷7=4)。所以在这个固定周期
+    假设下,"哪个星期几会落在经期里、哪个星期几是day2"这件事,每个周期都是同一个答案,
+    永远不会变——不是只对"这一次"经期成立的临时事实,可以放心写进一份要长期重复用的
+    每周计划模板里,不用担心下周/下个月就对不上了。
+
+    没有末次经期日期、或者用户压根没选定具体哪几天练(workoutWeekdays为空,问卷阶段
+    存的),就返回None——没有足够信息可以对齐到具体星期几。
+    """
+    if last_period_date is None or not workout_weekdays:
+        return None
+
+    start_weekday_index = last_period_date.weekday()  # Monday=0 ... Sunday=6
+
+    period_days: list[str] = []
+    day2_weekday: Optional[str] = None
+    for weekday in workout_weekdays:
+        if weekday not in _WEEKDAY_INDEX:
+            continue
+        offset = (_WEEKDAY_INDEX[weekday] - start_weekday_index) % 7
+        if offset < _PERIOD_LENGTH_DAYS:
+            period_days.append(weekday)
+            if offset == 1:
+                day2_weekday = weekday
+
+    if not period_days:
+        return None
+
+    parts = [
+        f"Based on a fixed {_CYCLE_LENGTH_DAYS}-day cycle estimate (which repeats every week since "
+        f"{_CYCLE_LENGTH_DAYS} days is exactly 4 weeks), her period is expected to land on "
+        f"{', '.join(period_days)} every cycle."
+    ]
+    if day2_weekday:
+        parts.append(
+            f"{day2_weekday} falls on day 2 of her period, usually the most uncomfortable day for most people — "
+            "make that session noticeably lighter (gentle stretching, walking, light mobility, or restorative "
+            "movement), not a normal-intensity or high-impact session."
+        )
+    remaining = [d for d in period_days if d != day2_weekday]
+    if remaining:
+        parts.append(
+            f"For {', '.join(remaining)} (also within her period window), lower the intensity somewhat — "
+            "lighter weights/reps, more rest, avoid high-impact cardio — but it doesn't need to be as gentle "
+            "as day 2."
+        )
+    parts.append(
+        "Don't skip these days entirely — still give her an appropriate session. You may briefly mention in "
+        "the reason field that it's adapted to her cycle, but keep it light and not clinical."
+    )
+    return " ".join(parts)
 
 
 # 所有文字最终都是直接塞进Flutter App里的普通文本框显示,不会经过markdown渲染器,
@@ -105,6 +168,7 @@ PLAN_SYSTEM_PROMPT = """你是PaceHealth App里的专业健身教练AI,负责根
 7. 你生成的是"每周重复训练模板",不是有起止日期的多周计划——我们目前没有为你提供计划要持续几周、或者每周该如何逐步加大强度的信息。所以 planName 里绝对不能出现具体的周数(比如"8周计划"这种说法),因为这个数字是你编的,没有依据。请把 planName 取成描述这份计划目标和方式的名字,不要提周数,例如"减脂塑形每周训练模板"或"居家力量与体态改善周计划"。
 8. 如果用户填写了平时喜欢的运动方式(比如跳舞、游泳),可以在合理的地方把这类元素融入计划(比如加一个有氧动作参考舞蹈类的节奏训练),或者在reason里提到这跟他喜欢的运动方式有关联,让计划更有针对性和趣味性,但不要为了迎合喜好而牺牲安全性或目标达成。
 9. planName也要简短(不超过6个英文单词),不要写成一整句话。
+10. 如果user message里提供了"经期相关的日程调整"信息(说明某些训练日预计会落在她的经期里,尤其标出了day 2的那天),把对应训练日的强度调低(更温和的动作、更多休息、避免高冲击有氧),不要因此跳过那个训练日不安排、也不要整份计划都变轻——只调整受影响的那一天或几天。可以在reason里简短提一句是配合她的生理周期做的调整,但语气要轻松自然,不要写得很临床或说教。
 """ + NO_MARKDOWN_INSTRUCTION + ENGLISH_OUTPUT_INSTRUCTION
 
 
@@ -116,6 +180,23 @@ def build_user_message(profile: Profile, personal_info: UserPersonalInfo) -> str
     injuries = ", ".join(personal_info.injuries) or "无"
     surgery = ", ".join(personal_info.surgeryHistory) or "无"
     avoid = ", ".join(personal_info.exercisesToAvoid) or "无特别要求"
+
+    # 问卷里选的具体星期几(比如周一/周三/周五),如果有传的话明确告诉AI训练日要
+    # 按这个顺序生成——backend之后会按"第几个训练日"对应"这个列表里第几个星期几"
+    # 来把计划实际排到日历上,顺序对不上的话经期调整就会错位到别的日子。
+    workout_days_section = ""
+    if personal_info.workoutWeekdays:
+        weekday_list = ", ".join(personal_info.workoutWeekdays)
+        workout_days_section = (
+            f"\n用户选定的具体训练日(按顺序): {weekday_list}。"
+            "请按这个顺序生成对应数量的训练日(day字段继续用'Day 1'/'Day 2'这种label即可,"
+            "不用直接写星期几),但训练日出现的先后顺序必须跟这个列表一一对应——"
+            "你生成的第1个训练日对应列表里第1个星期几,第2个对应第2个,以此类推,"
+            "因为之后会按这个顺序把每个训练日实际安排到对应的星期几。\n"
+        )
+
+    period_note = describe_period_aware_schedule(personal_info.lastPeriodDate, personal_info.workoutWeekdays)
+    period_section = f"\n【经期相关的日程调整 - 请据此调整对应训练日的强度,见上面训练日顺序对应的星期几】\n{period_note}\n" if period_note else ""
 
     return f"""请为以下用户生成一份个性化的每周训练计划。
 
@@ -134,13 +215,13 @@ def build_user_message(profile: Profile, personal_info: UserPersonalInfo) -> str
 平时喜欢的运动方式: {", ".join(profile.exerciseHabit) or "未特别说明"}
 运动地点: {profile.exerciseLocation}
 可用器材: {equipment}
-
+{workout_days_section}
 【健康与限制信息 - 务必严格遵守】
 体态问题: {posture}
 受伤部位/病史: {injuries}
 手术史: {surgery}
 需要避免的动作: {avoid}
-
+{period_section}
 请生成一份完整的每周训练计划,按照 {profile.exerciseFrequencyPerWeek} 次/周安排具体训练日,每天包含若干个具体动作,并为每个动作给出组数、次数或时长、休息时间,以及针对这个用户的推荐理由。这份计划是给用户每周重复使用的模板,不要在名称或内容中提及具体的周数。
 """
 

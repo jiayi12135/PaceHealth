@@ -46,6 +46,12 @@ create table if not exists public.ai_plans (
     plan_name text not null,
     goal text not null,
     weekly_frequency smallint not null check (weekly_frequency between 1 and 14),
+    -- planDay ("Day 1") -> weekday ("Mon") map from AssignWorkoutDaysScreen, e.g.
+    -- {"Day 1": "Mon", "Day 2": "Wed"}. Null until the user has assigned weekdays
+    -- (or for plans generated before this column existed). Persisted here (rather
+    -- than only in the Flutter app's in-memory ProfileStore) so the Home calendar
+    -- and Plan tab still know which days are scheduled after a restart/re-login.
+    day_assignments jsonb,
     created_at timestamptz not null default now()
 );
 
@@ -59,7 +65,15 @@ create table if not exists public.exercises (
     duration_seconds integer check (duration_seconds > 0),
     rest_seconds integer check (rest_seconds >= 0),
     reason text not null,
+    -- How to actually perform the move (separate from `reason`, which is "why this
+    -- exercise for you"). Nullable so rows saved before this column existed still
+    -- read back fine (the frontend just shows nothing for that section).
+    instructions text,
     video_url text,
+    -- Best-effort Pexels thumbnail, captured at generation time so reloading a
+    -- saved plan (e.g. after restart) doesn't need another Pexels lookup and stays
+    -- visually stable. Null if no key configured / lookup failed / no match.
+    image_url text,
     check ((reps is null) <> (duration_seconds is null))
 );
 

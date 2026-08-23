@@ -38,6 +38,15 @@ class FoodScanService:
         )
         return row.data[0]
 
+    def delete(self, user_id: str, scan_id: str) -> bool:
+        """Removes a logged scan (e.g. the user mis-scanned something or wants to
+        correct their log). Filtered by user_id too, not just scan_id, so one
+        user's bearer token can never delete another user's row. Returns False if
+        no row matched (already deleted / wrong id / not this user's), which the
+        router turns into a 404 rather than silently succeeding."""
+        result = self.client.table("food_scans").delete().eq("id", scan_id).eq("user_id", user_id).execute()
+        return bool(result.data)
+
     def list_for_day(self, user_id: str, day: date | None = None) -> list[dict[str, Any]]:
         """Scans created on the given UTC calendar day (defaults to today), newest first."""
         target_day = day or datetime.now(timezone.utc).date()

@@ -69,7 +69,7 @@ class TestGeneratePlan:
         profile_service = Mock()
         profile_service.get.return_value = _profile_response()
         plan_service = Mock()
-        plan_service.save.return_value = "plan-123"
+        plan_service.save.return_value = ("plan-123", "2026-08-23T00:00:00+00:00")
         app.dependency_overrides[get_profile_service] = lambda: profile_service
         app.dependency_overrides[get_plan_service] = lambda: plan_service
 
@@ -107,7 +107,15 @@ class TestGeneratePlan:
         assert called_profile.exerciseHabit == ["dancing", "swimming"]
         assert called_personal_info.injuries == ["mild lower back pain"]
 
-        plan_service.save.assert_called_once_with(USER_ID, ai_plan)
+        # 现在generate_plan会先(best-effort)查一遍Pexels缩略图,把结果一起传给save()
+        # 存下来(这样重启后GET /ai/plan读回来的计划也有图,不用再查一次)——沙箱里
+        # 出站网络本来就被挡住,所以这里查到的必然是全None,断言的时候不用管具体查到
+        # 了什么图,只要确认save()有拿到一个"动作名->url"形状的第三个参数就行。
+        plan_service.save.assert_called_once()
+        save_args = plan_service.save.call_args.args
+        assert save_args[0] == USER_ID
+        assert save_args[1] == ai_plan
+        assert save_args[2] == {"Bodyweight Squat": None}
 
     def test_requires_a_saved_profile(self) -> None:
         _override_auth()

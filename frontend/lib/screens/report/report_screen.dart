@@ -186,7 +186,7 @@ class _ReportScreenState extends State<ReportScreen> {
               const SizedBox(height: 14),
               _CompletionChart(workouts: _workouts, periodLabel: _period == 'weekly' ? 'this week' : 'this month'),
               const SizedBox(height: 14),
-              _WorkoutHistory(workouts: _workouts),
+              _WorkoutHistory(workouts: _workouts, plan: widget.store.plan),
             ],
           ],
         ),
@@ -405,10 +405,21 @@ class _DonutPainter extends CustomPainter {
   bool shouldRepaint(covariant _DonutPainter old) => old.rate != rate || old.color != color;
 }
 
-/// 最近训练历史列表:完成的显示时长,跳过的显示原因。
+/// 最近训练历史列表:完成的显示时长,跳过的显示原因。每一条可以点进去看当天具体
+/// 做了哪些动作(见_WorkoutDetailSheet)。
 class _WorkoutHistory extends StatelessWidget {
   final List<WorkoutCompletion> workouts;
-  const _WorkoutHistory({required this.workouts});
+  final FitnessPlan? plan;
+  const _WorkoutHistory({required this.workouts, this.plan});
+
+  void _openDetail(BuildContext context, WorkoutCompletion w) {
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
+      builder: (context) => _WorkoutDetailSheet(workout: w, plan: plan),
+    );
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -427,25 +438,142 @@ class _WorkoutHistory extends StatelessWidget {
               final detail = completed
                   ? (w.durationSeconds != null ? '${(w.durationSeconds! / 60).round()} min' : 'Completed')
                   : (w.reason ?? 'Skipped');
-              return Padding(
-                padding: const EdgeInsets.symmetric(vertical: 6),
-                child: Row(
-                  children: [
-                    Icon(
-                      completed ? Icons.check_circle : Icons.remove_circle_outline,
-                      size: 18,
-                      color: completed ? Theme.of(context).colorScheme.primary : Colors.grey.shade500,
-                    ),
-                    const SizedBox(width: 10),
-                    SizedBox(width: 40, child: Text(dateLabel, style: TextStyle(color: Colors.grey.shade600, fontSize: 12))),
-                    Expanded(child: Text(w.day, style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 13))),
-                    Text(detail, style: TextStyle(color: Colors.grey.shade600, fontSize: 12)),
-                  ],
+              return InkWell(
+                onTap: () => _openDetail(context, w),
+                borderRadius: BorderRadius.circular(8),
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(vertical: 6),
+                  child: Row(
+                    children: [
+                      Icon(
+                        completed ? Icons.check_circle : Icons.remove_circle_outline,
+                        size: 18,
+                        color: completed ? Theme.of(context).colorScheme.primary : Colors.grey.shade500,
+                      ),
+                      const SizedBox(width: 10),
+                      SizedBox(width: 40, child: Text(dateLabel, style: TextStyle(color: Colors.grey.shade600, fontSize: 12))),
+                      Expanded(child: Text(w.day, style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 13))),
+                      Text(detail, style: TextStyle(color: Colors.grey.shade600, fontSize: 12)),
+                      const SizedBox(width: 4),
+                      Icon(Icons.chevron_right, size: 16, color: Colors.grey.shade400),
+                    ],
+                  ),
                 ),
               );
             }),
           ],
         ),
+      ),
+    );
+  }
+}
+
+/// 点开一条训练历史后的详情弹层——按优先级展示当天具体做了什么:
+/// 1) 有逐动作记录(exerciseLog)就直接显示每个动作的完成/跳过情况;
+/// 2) 没有的话(老数据/非swipe流程记录的),但这条记录属于"当前这一轮"plan,
+///    就退回显示这个day在plan里原本安排的动作列表(说明这不是实际完成记录,只是参考);
+/// 3) 都没有就老实说没有详情——不同轮次plan会复用相同的day label("Day 1"等),
+///    所以绝不能拿当前plan的动作去匹配别的轮次的历史记录。
+class _WorkoutDetailSheet extends StatelessWidget {
+  final WorkoutCompletion workout;
+  final FitnessPlan? plan;
+  const _WorkoutDetailSheet({required this.workout, this.plan});
+
+  @override
+  Widget build(BuildContext context) {
+    final completed = workout.status == 'completed';
+    final dateLabel = '${workout.completedAt.month}/${workout.completedAt.day}/${workout.completedAt.year}';
+    final log = workout.exerciseLog;
+    final samePlan = plan?.planId != null && plan!.planId == workout.planId;
+    final plannedExercises = (log == null || log.isEmpty) && samePlan ? plan!.exercises.where((e) => e.day == workout.day).toList() : null;
+
+    return SafeArea(
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(20, 20, 20, 28),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Icon(
+                  completed ? Icons.check_circle : Icons.remove_circle_outline,
+                  color: completed ? Theme.of(context).colorScheme.primary : Colors.grey.shade500,
+                ),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(workout.day, style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 16)),
+                      Text(dateLabel, style: TextStyle(color: Colors.grey.shade600, fontSize: 12)),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 10),
+            if (!completed && (workout.reason ?? '').isNotEmpty)
+              Text('Skipped · ${workout.reason}', style: TextStyle(color: Colors.grey.shade700))
+            else if (completed && workout.durationSeconds != null)
+              Text('Total time: ${(workout.durationSeconds! / 60).round()} min', style: TextStyle(color: Colors.grey.shade700)),
+            const SizedBox(height: 18),
+            Text('Exercises', style: Theme.of(context).textTheme.titleSmall),
+            const SizedBox(height: 10),
+            if (log != null && log.isNotEmpty)
+              ...log.map((e) => _ExerciseLogRow(entry: e))
+            else if (plannedExercises != null && plannedExercises.isNotEmpty) ...[
+              Text(
+                "No per-exercise record was saved for this session — showing what this day's plan was.",
+                style: TextStyle(color: Colors.grey.shade500, fontSize: 12),
+              ),
+              const SizedBox(height: 10),
+              ...plannedExercises.map(
+                (e) => Padding(
+                  padding: const EdgeInsets.symmetric(vertical: 4),
+                  child: Row(
+                    children: [
+                      Icon(Icons.fitness_center, size: 15, color: Colors.grey.shade500),
+                      const SizedBox(width: 8),
+                      Expanded(child: Text(e.exerciseName, style: const TextStyle(fontSize: 13))),
+                    ],
+                  ),
+                ),
+              ),
+            ] else
+              Text('No exercise details available for this session.', style: TextStyle(color: Colors.grey.shade500, fontSize: 13)),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _ExerciseLogRow extends StatelessWidget {
+  final ExerciseLogEntry entry;
+  const _ExerciseLogRow({required this.entry});
+
+  @override
+  Widget build(BuildContext context) {
+    final done = entry.status == 'completed';
+    final durationSeconds = entry.actualDurationSeconds ?? entry.estimatedDurationSeconds;
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 5),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Icon(
+            done ? Icons.check_circle : Icons.remove_circle_outline,
+            size: 16,
+            color: done ? Theme.of(context).colorScheme.primary : Colors.grey.shade400,
+          ),
+          const SizedBox(width: 8),
+          Expanded(child: Text(entry.exerciseName, style: const TextStyle(fontSize: 13))),
+          if (done && durationSeconds != null)
+            Text('${(durationSeconds / 60).toStringAsFixed(durationSeconds < 60 ? 0 : 1)} min', style: TextStyle(color: Colors.grey.shade600, fontSize: 12))
+          else if (!done)
+            Text(entry.skipReason ?? 'Skipped', style: TextStyle(color: Colors.grey.shade600, fontSize: 12)),
+        ],
       ),
     );
   }

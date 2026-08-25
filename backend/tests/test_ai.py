@@ -70,8 +70,11 @@ class TestGeneratePlan:
         profile_service.get.return_value = _profile_response()
         plan_service = Mock()
         plan_service.save.return_value = ("plan-123", "2026-08-23T00:00:00+00:00")
+        workout_service = Mock()
+        workout_service.list_recent.return_value = []
         app.dependency_overrides[get_profile_service] = lambda: profile_service
         app.dependency_overrides[get_plan_service] = lambda: plan_service
+        app.dependency_overrides[get_workout_service] = lambda: workout_service
 
         ai_plan = WorkoutPlan(
             planName="Balanced starter plan",

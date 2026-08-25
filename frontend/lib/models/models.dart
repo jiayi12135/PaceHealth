@@ -52,18 +52,56 @@ class FitnessPlan {
       );
 }
 
+// 一次训练session里单个动作的完成情况——来自逐动作滑动页面(workout_session_screen)
+// 记录下来的exercise_log,只有"新"的、走完整个滑动流程的session才会有;老数据/直接
+// 标记完成跳过的旧记录这个是null,UI要能兜底处理。
+class ExerciseLogEntry {
+  final String exerciseName, status;
+  final int? estimatedDurationSeconds, actualDurationSeconds;
+  final String? skipReason, skipReasonNote;
+  const ExerciseLogEntry({required this.exerciseName, required this.status, this.estimatedDurationSeconds, this.actualDurationSeconds, this.skipReason, this.skipReasonNote});
+  factory ExerciseLogEntry.fromJson(Map<String, dynamic> j) => ExerciseLogEntry(
+        exerciseName: j['exerciseName'] as String,
+        status: j['status'] as String,
+        estimatedDurationSeconds: (j['estimatedDurationSeconds'] as num?)?.toInt(),
+        actualDurationSeconds: (j['actualDurationSeconds'] as num?)?.toInt(),
+        skipReason: j['skipReason'] as String?,
+        skipReasonNote: j['skipReasonNote'] as String?,
+      );
+}
+
+// Finish workout时的那份"这次为什么快/为什么久"反馈,只在session看起来不寻常时才收集。
+class WorkoutFeedback {
+  final String? timeReason, timeReasonNote, finishedQuicklyReason;
+  const WorkoutFeedback({this.timeReason, this.timeReasonNote, this.finishedQuicklyReason});
+  factory WorkoutFeedback.fromJson(Map<String, dynamic> j) => WorkoutFeedback(
+        timeReason: j['timeReason'] as String?,
+        timeReasonNote: j['timeReasonNote'] as String?,
+        finishedQuicklyReason: j['finishedQuicklyReason'] as String?,
+      );
+}
+
 class WorkoutCompletion {
   final String day, status;
   final String? reason;
   final int? durationSeconds;
   final DateTime completedAt;
-  const WorkoutCompletion({required this.day, required this.status, this.reason, this.durationSeconds, required this.completedAt});
+  // 记录这条完成/跳过是属于哪一份plan的——不同轮次的plan会重复用"Day 1"/"Day 2"这种
+  // 相同的day label,所以光按day label匹配会把上一轮的记录错误地显示在新一轮上面。
+  final String? planId;
+  // 这天具体做了哪些动作——Report的Workout history点进去看详情用,可能是null(老数据)。
+  final List<ExerciseLogEntry>? exerciseLog;
+  final WorkoutFeedback? feedback;
+  const WorkoutCompletion({required this.day, required this.status, this.reason, this.durationSeconds, required this.completedAt, this.planId, this.exerciseLog, this.feedback});
   factory WorkoutCompletion.fromJson(Map<String, dynamic> j) => WorkoutCompletion(
         day: j['day'] as String,
         status: j['status'] as String,
         reason: j['reason'] as String?,
         durationSeconds: (j['durationSeconds'] as num?)?.toInt(),
         completedAt: DateTime.parse(j['completedAt'] as String),
+        planId: j['planId'] as String?,
+        exerciseLog: (j['exerciseLog'] as List?)?.map((e) => ExerciseLogEntry.fromJson(e as Map<String, dynamic>)).toList(),
+        feedback: j['feedback'] != null ? WorkoutFeedback.fromJson(j['feedback'] as Map<String, dynamic>) : null,
       );
 }
 

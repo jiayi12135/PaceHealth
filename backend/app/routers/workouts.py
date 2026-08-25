@@ -32,7 +32,7 @@ def record_completion(
 def list_recent_completions(
     user: Annotated[AuthUser, Depends(get_current_user)],
     workouts: Annotated[WorkoutService, Depends(get_workout_service)],
-    days: Annotated[int, Query(ge=1, le=90)] = 14,
+    days: Annotated[int, Query(ge=1, le=365)] = 14,
 ) -> list[WorkoutCompletionResponse]:
     try:
         return workouts.list_recent(user.user_id, days)

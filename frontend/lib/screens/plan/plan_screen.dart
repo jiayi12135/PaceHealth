@@ -33,6 +33,10 @@ class _PlanScreenState extends State<PlanScreen> {
     // 但先试试backend有没有存过之前生成的(GET /ai/plan),真的一份都没有才生成新的,
     // 不然每次store.plan只是"这次冷启动还没恢复"就白白再生成一份、多花AI token。
     if (widget.store.plan == null) _loadOrGenerate();
+    // 这周有没有收工不一定是"刚点完最后一个才知道"——也可能是这周已经收工了,
+    // 用户过一会儿/换个session才重新打开Plan页,所以打开页面时也顺手查一次,
+    // 不是只在DaySection触发onRecorded时才查。
+    _maybeStartNewRound();
   }
 
   Future<void> _loadOrGenerate() async {
@@ -53,12 +57,38 @@ class _PlanScreenState extends State<PlanScreen> {
     await _generate();
   }
 
+  /// DaySection做完/跳过一个训练日之后调用——除了刷新这周的记录,还要顺手检查
+  /// 一下这周是不是刚好收工了(排定的训练日都有记录了),收工的话自动生成新一轮
+  /// 计划(见profile_store.dart的maybeStartNewRound),并提示用户一声。
+  void _handleRecorded() {
+    _loadRecent();
+    _maybeStartNewRound();
+  }
+
+  Future<void> _maybeStartNewRound() async {
+    final started = await maybeStartNewRound(widget.store);
+    if (started && mounted) {
+      // 这个页面直接读widget.store.plan,不是靠AnimatedBuilder监听store变化的——
+      // maybeStartNewRound内部已经调用了store.setPlan(通知了ChangeNotifier的
+      // 监听者),但这个State本身没在监听,得自己触发一次setState才会真的重绘,
+      // 不然明明新一轮已经生成好了、数据库里也有,画面却还停在旧的那份。
+      setState(() {});
+      _loadRecent(); // 新一轮的day label虽然大概率还是Day1/2/3,但保险起见刷新一下
+      showAppToast(context, "You finished this week! Here's your new round, adjusted based on how it went.");
+    }
+  }
+
   Future<void> _loadRecent() async {
     try {
       final recent = await _api.fetchRecentWorkouts(days: 7, accessToken: widget.store.accessToken);
       final byDay = <String, WorkoutCompletion>{};
+      // 不同轮次的plan会重复用"Day 1"/"Day 2"这种相同的day label,所以必须先按
+      // 当前plan的planId过滤,不然新一轮还没做任何训练时,会把上一轮同label的
+      // 完成/跳过记录错误地显示出来。
+      final currentPlanId = widget.store.plan?.planId;
+      final scoped = currentPlanId == null ? recent : recent.where((w) => w.planId == currentPlanId).toList();
       // 接口已经按completed_at倒序返回,先出现的就是最新的,后面同day的直接忽略。
-      for (final w in recent) {
+      for (final w in scoped) {
         byDay.putIfAbsent(w.day, () => w);
       }
       if (mounted) setState(() => _recentByDay = byDay);
@@ -106,7 +136,7 @@ class _PlanScreenState extends State<PlanScreen> {
               ? _ErrorState(message: _error!, onRetry: _loadOrGenerate)
               : plan == null
                   ? _EmptyState(onGenerate: _generate)
-                  : _PlanView(plan: plan, store: widget.store, recentByDay: _recentByDay, onRecorded: _loadRecent),
+                  : _PlanView(plan: plan, store: widget.store, recentByDay: _recentByDay, onRecorded: _handleRecorded),
     );
   }
 }

@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import '../../models/models.dart';
 import '../../services/api_service.dart';
 import '../../state/profile_store.dart';
+import '../../widgets/app_toast.dart';
 import '../plan/plan_screen.dart' show DaySection, ExerciseTile;
 
 /// 日期格子上的小标记:none=没排训练(休息日),pending=排了还没到/还没做,
@@ -43,6 +44,29 @@ class _CalendarScreenState extends State<CalendarScreen> {
   void initState() {
     super.initState();
     _loadRecent();
+    // 这周有没有收工不一定是"刚点完最后一个才知道"——也可能是这周已经收工了,
+    // 用户过一会儿/换个session才重新打开Calendar页,所以打开页面时也顺手查一次。
+    _maybeStartNewRound();
+  }
+
+  /// DaySection做完/跳过一个训练日之后调用——除了刷新记录,还要顺手检查一下这周
+  /// 是不是刚好收工了,收工的话自动生成新一轮计划(见profile_store.dart的
+  /// maybeStartNewRound),并提示用户一声。
+  void _handleRecorded() {
+    _loadRecent();
+    _maybeStartNewRound();
+  }
+
+  Future<void> _maybeStartNewRound() async {
+    final started = await maybeStartNewRound(widget.store);
+    if (started && mounted) {
+      // 这个页面直接读widget.store.plan/workoutDayAssignments,不是靠AnimatedBuilder
+      // 监听store变化的——maybeStartNewRound内部已经调用了store.setPlan,但这个State
+      // 本身没在监听,得自己触发一次setState才会真的重绘。
+      setState(() {});
+      _loadRecent();
+      showAppToast(context, "You finished this week! Here's your new round, adjusted based on how it went.");
+    }
   }
 
   /// 拉够多天数(60天,大概两个月)才能让翻月份看到的历史记录基本对得上,
@@ -95,7 +119,7 @@ class _CalendarScreenState extends State<CalendarScreen> {
                   selectedDate: _selectedDate,
                   onChangeMonth: _changeMonth,
                   onSelectDate: (d) => setState(() => _selectedDate = d),
-                  onRecorded: _loadRecent,
+                  onRecorded: _handleRecorded,
                 ),
     );
   }

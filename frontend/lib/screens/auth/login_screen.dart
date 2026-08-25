@@ -53,6 +53,9 @@ class _LoginScreenState extends State<LoginScreen> {
       } catch (_) {
         saved = null; // 查失败就当没填过处理,不阻断登录,顶多是又让他填一次问卷
       }
+      // 同样是纯本地存的东西,登录时也读一遍(比如换了台设备登录,本地是空的也无所谓,
+      // Home页那个进度条判断没有goalStartDate就不显示,不会报错)。
+      await widget.store.restoreGoalMeta();
 
       widget.store.signIn(session.email, accessToken: session.accessToken);
       if (saved != null) {

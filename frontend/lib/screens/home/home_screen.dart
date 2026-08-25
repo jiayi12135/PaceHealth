@@ -28,58 +28,22 @@ class HomeScreen extends StatefulWidget {
 
 class _HomeScreenState extends State<HomeScreen> {
   List<WorkoutCompletion> _recent = [];
-  bool _loadingStreak = true;
 
   @override
   void initState() {
     super.initState();
-    _loadStreak();
+    _loadRecent();
   }
 
-  Future<void> _loadStreak() async {
+  Future<void> _loadRecent() async {
     try {
-      // 拉够多天数(5周)才能算出有意义的streak,不然只拉7天的话streak最多显示到7。
-      final recent = await ApiService().fetchRecentWorkouts(days: 35, accessToken: widget.store.accessToken);
+      // 给_GoalProgressCard的"完成了几次训练"用——目标进度条要看的是从goalStartDate
+      // 到现在一共完成了几次,不是只看最近几周,所以这里拉大一点(接近一年)。
+      final recent = await ApiService().fetchRecentWorkouts(days: 365, accessToken: widget.store.accessToken);
       if (mounted) setState(() => _recent = recent);
     } catch (_) {
-      // streak拉不到就显示0,不阻断首页其他内容
-    } finally {
-      if (mounted) setState(() => _loadingStreak = false);
+      // 拉不到不阻断首页其他内容,目标进度条会按0次处理
     }
-  }
-
-  /// Streak按"排定的训练日"算,不是按自然日连续算——不然一周3-5练的计划,中间的
-  /// 休息日会把streak天天打断,永远只显示1。休息日(非训练日)直接跳过、不算数也不
-  /// 打断;只有"排定要练的那天却没完成"才会把streak断掉。之前的plan换过/重新生成过
-  /// 也没关系,workoutDayAssignments会保留下来(见autoAssignWorkoutDays),而且
-  /// _recent本来就没有按plan过滤,以前的完成记录一样算数。
-  int get _streak {
-    final completedDates = _recent.where((w) => w.status == 'completed').map((w) {
-      final d = w.completedAt.toLocal();
-      return DateTime(d.year, d.month, d.day);
-    }).toSet();
-
-    final now = DateTime.now();
-    final today = DateTime(now.year, now.month, now.day);
-    final scheduledWeekdays = widget.store.workoutDayAssignments.values.toSet();
-
-    var streak = 0;
-    var cursor = today;
-    // 最多回看35天,跟_loadStreak拉的历史范围对齐(也避免万一没有排定训练日时死循环)。
-    for (var i = 0; i < 35; i++) {
-      // 没有排定过训练日(比如还没生成过plan)就退回"每天都算"的老逻辑。
-      final isScheduledDay = scheduledWeekdays.isEmpty || scheduledWeekdays.contains(kWeekdays[cursor.weekday - 1]);
-      if (isScheduledDay) {
-        if (completedDates.contains(cursor)) {
-          streak++;
-        } else if (cursor != today) {
-          break; // 排定的训练日、已经过去了、却没完成记录——streak在这里断掉
-        }
-        // cursor == today 且今天还没练:不算断,今天先跳过继续往前看昨天
-      }
-      cursor = cursor.subtract(const Duration(days: 1));
-    }
-    return streak;
   }
 
   String get _greeting {
@@ -143,12 +107,11 @@ class _HomeScreenState extends State<HomeScreen> {
             ),
           ),
           const SizedBox(height: 20),
+          _GoalProgressCard(store: widget.store, recent: _recent),
           _WeeklyCalendarCard(
             store: widget.store,
             onDayTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => CalendarScreen(store: widget.store))),
           ),
-          const SizedBox(height: 14),
-          _StreakCard(streak: _streak, loading: _loadingStreak),
           if (isFemale) ...[
             const SizedBox(height: 14),
             _PeriodCard(store: widget.store, onChanged: () => setState(() {})),
@@ -255,35 +218,89 @@ class _WeeklyCalendarCard extends StatelessWidget {
   }
 }
 
-class _StreakCard extends StatelessWidget {
-  final int streak;
-  final bool loading;
-  const _StreakCard({required this.streak, required this.loading});
+/// "预计几周达到目标体重"的进度条卡片——只在真的有体重要减(startWeightKg >
+/// targetWeightKg,减重目标才会这样)才显示,增肌/维持目标没有真正的体重终点,
+/// 这张卡片直接不出现,不硬凑一个没意义的数字。速率是纯代码算的(见profile_store.dart
+/// 的estimatedWeeklyRateKg/estimatedWeeksToGoal),不是AI编的,也不是医学承诺。
+/// 进度条本身跟着"实际完成了几次训练"走,不是单纯按日历时间推进——不然躺着不练,
+/// 进度条也会自己往前挪,起不到激励作用;做完一次训练它才应该往前挪一点。
+class _GoalProgressCard extends StatelessWidget {
+  final ProfileStore store;
+  final List<WorkoutCompletion> recent;
+  const _GoalProgressCard({required this.store, required this.recent});
 
   @override
-  Widget build(BuildContext context) => Card(
+  Widget build(BuildContext context) {
+    final profile = store.profile;
+    final workoutsPerWeek = store.workoutDays.isNotEmpty ? store.workoutDays.length : profile.exerciseFrequencyPerWeek;
+    final weeks = estimatedWeeksToGoal(
+      startWeightKg: profile.startWeightKg,
+      targetWeightKg: profile.targetWeightKg,
+      experience: store.experience,
+      workoutsPerWeek: workoutsPerWeek,
+    );
+    if (weeks == null || workoutsPerWeek <= 0) return const SizedBox.shrink();
+
+    final startDate = store.goalStartDate ?? DateTime.now();
+    final startDateOnly = DateTime(startDate.year, startDate.month, startDate.day);
+    // 从设定目标那天开始,算实际完成(不算skip)了几次训练——这才是"做了多少"的
+    // 真实信号,不是单纯日期过去了多久。
+    final completedCount = recent.where((w) {
+      if (w.status != 'completed') return false;
+      final d = w.completedAt.toLocal();
+      return !DateTime(d.year, d.month, d.day).isBefore(startDateOnly);
+    }).length;
+    final totalEstimatedWorkouts = weeks * workoutsPerWeek;
+    final progress = (completedCount / totalEstimatedWorkouts).clamp(0.0, 1.0);
+    final toLoseKg = profile.startWeightKg - profile.targetWeightKg;
+
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 14),
+      child: Card(
         child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 16),
-          child: Row(
+          padding: const EdgeInsets.all(16),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              const Text('🔥', style: TextStyle(fontSize: 26)),
-              const SizedBox(width: 12),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      loading ? 'Loading streak…' : (streak == 0 ? 'No streak yet' : '$streak day${streak > 1 ? 's' : ''} streak'),
-                      style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 15),
+              Row(
+                children: [
+                  const Text('🎯', style: TextStyle(fontSize: 22)),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text('About $weeks week${weeks == 1 ? '' : 's'} to your goal', style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 13)),
+                        Text(
+                          '$completedCount of ~$totalEstimatedWorkouts workouts done · losing ${toLoseKg.toStringAsFixed(1)} kg',
+                          style: TextStyle(color: Colors.grey.shade500, fontSize: 11),
+                        ),
+                      ],
                     ),
-                    Text('Complete a workout today to keep it going', style: TextStyle(color: Colors.grey.shade600, fontSize: 12)),
-                  ],
+                  ),
+                ],
+              ),
+              const SizedBox(height: 12),
+              ClipRRect(
+                borderRadius: BorderRadius.circular(8),
+                child: LinearProgressIndicator(
+                  value: progress,
+                  minHeight: 8,
+                  backgroundColor: Colors.grey.shade200,
+                  valueColor: AlwaysStoppedAnimation(Theme.of(context).colorScheme.primary),
                 ),
+              ),
+              const SizedBox(height: 6),
+              Text(
+                'Estimate only, based on your experience level and workout frequency — moves as you complete workouts, not a guarantee.',
+                style: TextStyle(color: Colors.grey.shade500, fontSize: 10.5),
               ),
             ],
           ),
         ),
-      );
+      ),
+    );
+  }
 }
 
 /// 经期记录+预测。只对sex==female显示。日期只存yyyy-MM-dd,预测用固定28天周期假设——

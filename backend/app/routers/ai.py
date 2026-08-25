@@ -78,6 +78,36 @@ def _describe_skip_reason(entry) -> str:
     return label
 
 
+def _build_adherence_note(workouts: WorkoutService, user_id: str, *, days: int = 14) -> str | None:
+    """最近训练完成/跳过记录拼成一段给AI看的摘要——哪些天完成了、哪些跳过了、
+    为什么,完成的那天里单个动作又是否被跳过(比如深蹲反复因为pain跳过,即使
+    那天整体算完成)。记录本身是系统写的事实,AI只读不编。
+
+    原本只喂给聊天功能用,现在generate-plan生成"新一轮"计划时也要用同一份逻辑,
+    所以抽成共用函数,而不是两边各写一份、以后容易改一边漏改另一边。
+    Best-effort:查失败就返回None,不阻断调用方。
+    """
+    try:
+        recent = workouts.list_recent(user_id, days=days)
+    except PostgrestAPIError:
+        return None
+    if not recent:
+        return None
+
+    parts = []
+    for completion in recent[:10]:
+        if completion.status == "completed":
+            part = f"{completion.day}: completed"
+            skipped = [e for e in (completion.exercise_log or []) if e.status == "skipped"][:3]
+            if skipped:
+                reasons = "; ".join(f"{e.exercise_name} ({_describe_skip_reason(e)})" for e in skipped)
+                part += f" but skipped within the session: {reasons}"
+            parts.append(part)
+        else:
+            parts.append(f"{completion.day}: skipped ({completion.reason or 'no reason given'})")
+    return "; ".join(parts)
+
+
 def _require_profile(profiles: ProfileService, user_id: str):
     try:
         profile = profiles.get(user_id)
@@ -98,13 +128,20 @@ def generate_plan(
     user: Annotated[AuthUser, Depends(get_current_user)],
     profiles: Annotated[ProfileService, Depends(get_profile_service)],
     plans: Annotated[PlanService, Depends(get_plan_service)],
+    workouts: Annotated[WorkoutService, Depends(get_workout_service)],
 ) -> WorkoutPlanResponse:
     profile = _require_profile(profiles, user.user_id)
+
+    # 有值的话说明这不是第一次生成——"新一轮"计划要参考上一轮实际做下来的情况
+    # (哪些天完成/跳过、为什么、单个动作反馈)来调整,而不是每周原样重复。
+    # 第一次生成(还没有任何记录)这里自然是None,提示词里对应那段就不会出现。
+    adherence_note = _build_adherence_note(workouts, user.user_id)
 
     try:
         plan = generate_workout_plan(
             to_ai_profile(profile.profile),
             to_ai_personal_info(profile.personal_info),
+            adherence_note=adherence_note,
         )
     except APIError:
         raise
@@ -205,28 +242,9 @@ def chat(
             pass
 
     # 最近14天的训练完成/跳过记录也进同一份context——AI能看到"跳过了几次、为什么",
-    # 但记录本身是系统写的事实,AI只读不编。Best-effort,查失败聊天照常。
-    adherence_note = None
-    try:
-        recent = workouts.list_recent(user.user_id, days=14)
-        if recent:
-            parts = []
-            for completion in recent[:10]:
-                if completion.status == "completed":
-                    part = f"{completion.day}: completed"
-                    # 就算这一天整体算"完成",里面单个动作也可能被跳过——这才是对
-                    # 调整计划真正有用的信号(比如"深蹲反复因为pain跳过"),
-                    # 所以从exercise_log里单独拎出来,不是只看day级别的status。
-                    skipped = [e for e in (completion.exercise_log or []) if e.status == "skipped"][:3]
-                    if skipped:
-                        reasons = "; ".join(f"{e.exercise_name} ({_describe_skip_reason(e)})" for e in skipped)
-                        part += f" but skipped within the session: {reasons}"
-                    parts.append(part)
-                else:
-                    parts.append(f"{completion.day}: skipped ({completion.reason or 'no reason given'})")
-            adherence_note = "; ".join(parts)
-    except PostgrestAPIError:
-        pass
+    # 但记录本身是系统写的事实,AI只读不编。跟generate-plan用的是同一份逻辑
+    # (见_build_adherence_note),Best-effort,查失败聊天照常。
+    adherence_note = _build_adherence_note(workouts, user.user_id, days=14)
 
     try:
         reply = generate_chat_reply(

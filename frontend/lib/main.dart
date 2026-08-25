@@ -36,6 +36,9 @@ class _PaceHealthAppState extends State<PaceHealthApp> {
     if (persisted != null) {
       try {
         final saved = await ApiService().fetchMyProfile(accessToken: persisted.accessToken);
+        // 经验等级/目标起点日期是纯本地存的(不经过backend),重启后也要读回来,
+        // 不然Home页的"预计几周达到目标"进度条会看起来像是从没设置过。
+        await widget.store.restoreGoalMeta();
         // 跟login_screen.dart一样的顺序:先把要读的东西都准备好,再一次性调用
         // signIn+hydrate,两次notify之间不await——避免main.dart这个reactive的
         // MaterialApp.home在中途用一个"过渡态"抢先重建,把还没走完hydrate的画面吃掉。

@@ -202,10 +202,21 @@ FOOD_IDENTIFY_TOOL = {
 }
 
 
-def generate_workout_plan(profile: Profile, personal_info: UserPersonalInfo) -> WorkoutPlan:
-    """调用 Claude API,返回结构化的 WorkoutPlan"""
+def generate_workout_plan(
+    profile: Profile,
+    personal_info: UserPersonalInfo,
+    adherence_note: Optional[str] = None,
+) -> WorkoutPlan:
+    """调用 Claude API,返回结构化的 WorkoutPlan。
 
-    user_message = build_user_message(profile, personal_info)
+    adherence_note: 上一轮计划实际执行情况的摘要(哪些天完成了、哪些跳过了、
+    为什么跳过、单个动作的feedback)——只有在"新一轮"计划生成时(上一周排定的
+    训练日全部有记录了)才会有值,让AI据此调整这一轮,而不是每周都原样重复
+    同一份计划。这段摘要是backend从workout_completions表里查出来拼的事实,
+    不是AI自己编的。
+    """
+
+    user_message = build_user_message(profile, personal_info, adherence_note=adherence_note)
 
     response = _get_client().messages.create(
         model=MODEL_NAME,

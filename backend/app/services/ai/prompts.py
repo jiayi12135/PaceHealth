@@ -169,10 +169,15 @@ PLAN_SYSTEM_PROMPT = """你是PaceHealth App里的专业健身教练AI,负责根
 8. 如果用户填写了平时喜欢的运动方式(比如跳舞、游泳),可以在合理的地方把这类元素融入计划(比如加一个有氧动作参考舞蹈类的节奏训练),或者在reason里提到这跟他喜欢的运动方式有关联,让计划更有针对性和趣味性,但不要为了迎合喜好而牺牲安全性或目标达成。
 9. planName也要简短(不超过6个英文单词),不要写成一整句话。
 10. 如果user message里提供了"经期相关的日程调整"信息(说明某些训练日预计会落在她的经期里,尤其标出了day 2的那天),把对应训练日的强度调低(更温和的动作、更多休息、避免高冲击有氧),不要因此跳过那个训练日不安排、也不要整份计划都变轻——只调整受影响的那一天或几天。可以在reason里简短提一句是配合她的生理周期做的调整,但语气要轻松自然,不要写得很临床或说教。
+11. 如果user message里提供了"上一轮计划的实际完成情况",这是"新一轮"计划——要根据这份记录做真实的调整,不是原样重复上一轮:反复因为pain/discomfort跳过的动作,这一轮换成更安全的替代动作(参考受伤部位/避免动作的原则);因为too difficult跳过的,降低强度或换成更基础的版本;因为no time/not enough space跳过的,可以考虑缩短时长或换成不需要那么多空间/时间的动作;顺利完成、看起来适合的动作可以保留或做小幅度进阶(比如加一点组数/次数,但要合理,不要一下子跳很多)。在对应动作的reason里可以简短提一句这是根据上一轮的情况调整的,但不用每个动作都提,自然一点。
 """ + NO_MARKDOWN_INSTRUCTION + ENGLISH_OUTPUT_INSTRUCTION
 
 
-def build_user_message(profile: Profile, personal_info: UserPersonalInfo) -> str:
+def build_user_message(
+    profile: Profile,
+    personal_info: UserPersonalInfo,
+    adherence_note: Optional[str] = None,
+) -> str:
     """把结构化的用户数据转成一段给AI看的自然语言描述"""
 
     equipment = ", ".join(personal_info.availableEquipment) or "无(徒手训练)"
@@ -198,6 +203,16 @@ def build_user_message(profile: Profile, personal_info: UserPersonalInfo) -> str
     period_note = describe_period_aware_schedule(personal_info.lastPeriodDate, personal_info.workoutWeekdays)
     period_section = f"\n【经期相关的日程调整 - 请据此调整对应训练日的强度,见上面训练日顺序对应的星期几】\n{period_note}\n" if period_note else ""
 
+    # 只有"新一轮"计划(上一周排定的训练日全都有记录了)才会带上这段——上一轮
+    # 实际做下来的情况(哪些天完成、哪些跳过、为什么、单个动作的反馈),让AI真的
+    # 根据用户上周的实际情况调整这一轮,而不是每周都生成一份长得差不多的计划。
+    adherence_section = (
+        f"\n【上一轮计划的实际完成情况 - 这是系统记录的事实,不是用户自己说的,"
+        f"请据此调整这一轮的动作选择,而不是简单重复上一轮】\n{adherence_note}\n"
+        if adherence_note
+        else ""
+    )
+
     return f"""请为以下用户生成一份个性化的每周训练计划。
 
 【基本信息】
@@ -221,7 +236,7 @@ def build_user_message(profile: Profile, personal_info: UserPersonalInfo) -> str
 受伤部位/病史: {injuries}
 手术史: {surgery}
 需要避免的动作: {avoid}
-{period_section}
+{period_section}{adherence_section}
 请生成一份完整的每周训练计划,按照 {profile.exerciseFrequencyPerWeek} 次/周安排具体训练日,每天包含若干个具体动作,并为每个动作给出组数、次数或时长、休息时间,以及针对这个用户的推荐理由。这份计划是给用户每周重复使用的模板,不要在名称或内容中提及具体的周数。
 """
 

@@ -633,6 +633,9 @@ class _QuestionnaireState extends State<QuestionnaireScreen> {
       }
       widget.store.workoutDays = orderedWorkoutWeekdays;
       widget.store.save(profile: profile, personalInfo: info);
+      // 记一下经验等级+现在这个时间点(给Home页"预计几周达到目标"的进度条用)——
+      // 只在第一次问卷完成时设起点,不是核心数据所以不经过backend。
+      await widget.store.saveGoalMeta(experience: experience);
       // 问卷填完先过渡到一个loading页,在那边生成plan(带着刚存的profile——伤病/
       // 器材都在里面),生成完直接停在Plan tab,而不是回Home再让用户自己点进去。
       if (mounted) Navigator.pushReplacement(context, MaterialPageRoute(builder: (_) => PlanGeneratingScreen(store: widget.store)));

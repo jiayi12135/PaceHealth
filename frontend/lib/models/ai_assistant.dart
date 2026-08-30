@@ -18,7 +18,24 @@ const List<AiIconOption> kAiIconOptions = [
   AiIconOption(key: 'paw', icon: Icons.pets, color: Color(0xffe67e22)),
 ];
 
-AiIconOption aiIconByKey(String key) => kAiIconOptions.firstWhere((o) => o.key == key, orElse: () => kAiIconOptions.first);
+AiIconOption aiIconByKey(String key) {
+  final petPrefix = ['cat_', 'dog_', 'wolf_'].firstWhere((prefix) => key.startsWith(prefix), orElse: () => '');
+  if (petPrefix.isNotEmpty) {
+    final index = int.tryParse(key.substring(petPrefix.length)) ?? 0;
+    final colorOptions = kAiIconOptions.skip(2).take(4).toList();
+    final safeIndex = index < 0 ? 0 : index >= colorOptions.length ? colorOptions.length - 1 : index;
+    final color = colorOptions[safeIndex];
+    return AiIconOption(key: key, icon: color.icon, color: color.color);
+  }
+  return kAiIconOptions.firstWhere((o) => o.key == key, orElse: () => kAiIconOptions.first);
+}
+
+String aiEmojiByKey(String key) {
+  if (key.startsWith('cat_') || key == 'paw') return '🐱';
+  if (key.startsWith('dog_') || key == 'heart') return '🐶';
+  if (key.startsWith('wolf_') || key == 'bolt') return '🐺';
+  return '🤖';
+}
 
 /// 用户自定义的AI设置(名字 + 头像),本地存储,不经过backend
 class AiAssistantSettings {

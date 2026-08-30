@@ -54,7 +54,9 @@ class ProfileService:
         }
         personal_row: dict[str, Any] = {
             "user_id": user_id,
-            **payload.personal_info.model_dump(by_alias=False),
+            # mode="json" converts date values such as last_period_date to
+            # ISO strings before they are sent through PostgREST.
+            **payload.personal_info.model_dump(mode="json", by_alias=False),
         }
 
         self.client.table("profiles").upsert(profile_row, on_conflict="user_id").execute()
@@ -75,9 +77,14 @@ class ProfileService:
 
     @staticmethod
     def _personal_info_from_row(row: dict[str, Any]) -> PersonalInfoData:
-        return PersonalInfoData.model_validate(
-            {key: row.get(key, []) for key in PersonalInfoData.model_fields}
-        )
+        values = {
+            key: row.get(key, None if key == "last_period_date" else [])
+            for key in PersonalInfoData.model_fields
+        }
+        # Older rows may contain an empty string instead of SQL NULL.
+        if values["last_period_date"] in ("", []):
+            values["last_period_date"] = None
+        return PersonalInfoData.model_validate(values)
 
 
 def get_profile_service(

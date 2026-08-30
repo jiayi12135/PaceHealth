@@ -47,7 +47,7 @@ class ProfileAreaScreen extends StatelessWidget {
             ),
           ),
           const SizedBox(height: 24),
-          Text('Your health', style: Theme.of(context).textTheme.titleSmall?.copyWith(fontWeight: FontWeight.bold)),
+          Text('Profile', style: Theme.of(context).textTheme.titleSmall?.copyWith(fontWeight: FontWeight.bold)),
           const SizedBox(height: 8),
           _MenuCard(children: [
             _MenuItem(icon: Icons.person_outline, title: 'Personal information', subtitle: 'Your health and fitness details', onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => PersonalInformationScreen(store: store)))),

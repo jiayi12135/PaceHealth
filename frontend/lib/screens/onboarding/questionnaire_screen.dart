@@ -28,6 +28,7 @@ class QuestionnaireScreen extends StatefulWidget {
 }
 
 class _QuestionnaireState extends State<QuestionnaireScreen> {
+  String _emojiFor(String key) => key == 'cat' ? '\u{1F431}' : key == 'dog' ? '\u{1F436}' : '\u{1F43A}';
   static const _totalSteps = 9;
   int step = 0;
   bool _saving = false;
@@ -56,7 +57,11 @@ class _QuestionnaireState extends State<QuestionnaireScreen> {
   final Set<String> homeEquipment = {};
   final Set<String> gymEquipment = {};
   final Set<String> outdoorActivities = {};
+  final homeOther = TextEditingController();
+  final gymOther = TextEditingController();
+  final outdoorOther = TextEditingController();
   String eatingLocation = '';
+  String otherExerciseLocation = '';
 
   // Step 6: careful areas + posture + surgery
   final Set<String> carefulAreas = {};
@@ -75,6 +80,9 @@ class _QuestionnaireState extends State<QuestionnaireScreen> {
     height.dispose();
     start.dispose();
     minutes.dispose();
+    homeOther.dispose();
+    gymOther.dispose();
+    outdoorOther.dispose();
     super.dispose();
   }
 
@@ -134,7 +142,7 @@ class _QuestionnaireState extends State<QuestionnaireScreen> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              if (step > 0) _MascotBubble(emoji: companion?.emoji ?? '🐾', text: _bubbleText),
+              if (step > 0) _MascotBubble(emoji: _emojiFor(companion?.key ?? 'cat'), text: _bubbleText),
               const SizedBox(height: 12),
               Expanded(child: SingleChildScrollView(child: _content())),
               const SizedBox(height: 8),
@@ -188,7 +196,7 @@ class _QuestionnaireState extends State<QuestionnaireScreen> {
       case 7:
         return _scheduleStep();
       default:
-        return _review();
+        return _fancyReview();
     }
   }
 
@@ -196,15 +204,14 @@ class _QuestionnaireState extends State<QuestionnaireScreen> {
   Widget _companionStep() => Column(
         children: [
           const SizedBox(height: 8),
-          _MascotBubble(emoji: companion?.emoji ?? '👋', text: _bubbleText),
+          _MascotBubble(emoji: _emojiFor(companion?.key ?? 'cat'), text: _bubbleText),
           const SizedBox(height: 12),
           // 大只的吉祥物形象(带一个简单的弹跳动画,后续可换成真正的动画插画)
           TweenAnimationBuilder<double>(
-            key: ValueKey(companion?.key ?? 'none'),
             tween: Tween(begin: 0.6, end: 1),
             duration: const Duration(milliseconds: 500),
             curve: Curves.elasticOut,
-            builder: (context, scale, child) => Transform.scale(scale: scale, child: child),
+            builder: (context, scale, child) => Transform.scale(scale: scale, child: Text(_emojiFor(companion?.key ?? 'cat'), style: const TextStyle(fontSize: 110))),
             child: Text(companion?.emoji ?? '🐾', style: const TextStyle(fontSize: 110)),
           ),
           const SizedBox(height: 16),
@@ -217,7 +224,7 @@ class _QuestionnaireState extends State<QuestionnaireScreen> {
                 onTap: () => setState(() => companion = c),
                 child: Row(
                   children: [
-                    Text(c.emoji, style: const TextStyle(fontSize: 34)),
+                    Text(_emojiFor(c.key), style: const TextStyle(fontSize: 34)),
                     const SizedBox(width: 14),
                     Expanded(
                       child: Column(
@@ -242,7 +249,7 @@ class _QuestionnaireState extends State<QuestionnaireScreen> {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           _fieldLabel('Name'),
-          TextField(controller: name, decoration: const InputDecoration(hintText: 'What should I call you?')),
+          TextField(controller: name),
           _fieldLabel('Gender'),
           Wrap(
             spacing: 10,
@@ -286,6 +293,7 @@ class _QuestionnaireState extends State<QuestionnaireScreen> {
     // 如果体重还没填/填得不合理(<=31),先不设上限,等填了再收紧。
     final maxLoseTarget = startW > 31 ? startW - 1 : 300.0;
     return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         _SelectableCard(
           selected: goal == 'Lose weight',
@@ -331,7 +339,7 @@ class _QuestionnaireState extends State<QuestionnaireScreen> {
                 Wrap(
                   spacing: 8,
                   runSpacing: 8,
-                  children: ['Arm', 'Leg', 'Butt', 'Chest', 'Back', 'Core'].map((area) {
+                  children: ['Full body', 'Chest', 'Upper back', 'Lower back', 'Shoulders', 'Biceps', 'Triceps', 'Forearms', 'Core / Abs', 'Obliques', 'Glutes', 'Quadriceps', 'Hamstrings', 'Calves'].map((area) {
                     final selected = muscleFocus.contains(area);
                     return FilterChip(
                       label: Text(area),
@@ -404,11 +412,11 @@ class _QuestionnaireState extends State<QuestionnaireScreen> {
           ),
         ),
         const SizedBox(height: 14),
-        _locationSection('🏠', 'Home', 'Home', ['Dumbbells', 'Yoga mat', 'Resistance band', 'Kettlebell', 'None'], homeEquipment),
+        _locationSection('🏠', 'Home', 'Home', ['Dumbbells', 'Yoga mat', 'Resistance band', 'Kettlebell', 'Stability ball', 'Foam roller', 'Pull-up bar', 'Other'], homeEquipment, homeOther),
         const SizedBox(height: 12),
-        _locationSection('🏋️', 'Gym', 'Gym', ['Treadmill', 'Machines', 'Free weights', 'Stationary bike'], gymEquipment),
+        _locationSection('🏋️', 'Gym', 'Gym', ['Treadmill', 'Machines', 'Free weights', 'Stationary bike', 'Cable machine', 'Smith machine', 'Bench', 'Rowing machine', 'Other'], gymEquipment, gymOther),
         const SizedBox(height: 12),
-        _locationSection('🌳', 'Outdoor', 'Outdoors', ['Jogging', 'Swimming', 'Cycling', 'Hiking'], outdoorActivities),
+        _locationSection('🌳', 'Outdoor', 'Outdoors', ['Jogging', 'Running', 'Swimming', 'Cycling', 'Hiking', 'Basketball', 'Badminton', 'Tennis', 'Football', 'Other'], outdoorActivities, outdoorOther),
         _fieldLabel('Where do you usually eat?'),
         Wrap(
           spacing: 10,
@@ -425,11 +433,19 @@ class _QuestionnaireState extends State<QuestionnaireScreen> {
     );
   }
 
-  Widget _locationSection(String emoji, String label, String value, List<String> chips, Set<String> selectedChips) {
+  Widget _locationSection(String emoji, String label, String value, List<String> chips, Set<String> selectedChips, TextEditingController otherController) {
     final selected = locations.contains(value);
     return _SelectableCard(
       selected: selected,
-      onTap: () => setState(() => selected ? locations.remove(value) : locations.add(value)),
+      onTap: () => setState(() {
+        if (selected) {
+          locations.remove(value);
+          selectedChips.clear();
+          otherController.clear();
+        } else {
+          locations.add(value);
+        }
+      }),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -455,6 +471,10 @@ class _QuestionnaireState extends State<QuestionnaireScreen> {
                 );
               }).toList(),
             ),
+            if (selectedChips.contains('Other')) ...[
+              const SizedBox(height: 8),
+              TextField(controller: otherController, decoration: const InputDecoration(labelText: 'Other equipment or activity')),
+            ],
           ],
         ],
       ),
@@ -523,6 +543,24 @@ class _QuestionnaireState extends State<QuestionnaireScreen> {
         ],
       );
 
+  Widget _fancyReview() {
+    return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+      const Text('Review your answers', style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold)),
+      const SizedBox(height: 4), Text('Make sure everything looks right before we create your profile.', style: TextStyle(color: Colors.grey)),
+      const SizedBox(height: 16),
+      _reviewSection(Icons.person_outline, 'About you', [
+        _reviewRow('Name', name.text), _reviewRow('Age', '${age.text} years'), _reviewRow('Sex', sex), _reviewRow('Height', '${height.text} cm'), _reviewRow('Initial weight', '${start.text} kg'),
+      ]),
+      _reviewSection(Icons.flag_outlined, 'Your goal', [_reviewRow('Goal', goal == 'Lose weight' ? 'Lose weight · target ${targetWeight.toStringAsFixed(0)} kg' : goal == 'Build muscle' && muscleFocus.isNotEmpty ? 'Build muscle · ${muscleFocus.join(', ')}' : goal)]),
+      _reviewSection(Icons.directions_run, 'Activity', [_reviewRow('Experience', experience), _reviewRow('Daily activity', activity), _reviewRow('Exercise days', workoutDays.join(', ')), _reviewRow('Session length', '${minutes.text} min')]),
+      _reviewSection(Icons.place_outlined, 'Where you exercise', [_reviewRow('Locations', locations.join(', ')), _reviewRow('Home equipment', homeEquipment.where((e) => e != 'None').join(', ')), _reviewRow('Gym equipment', gymEquipment.join(', ')), _reviewRow('Outdoor activities', outdoorActivities.join(', '))]),
+      _reviewSection(Icons.health_and_safety_outlined, 'Health considerations', [_reviewRow('Sensitive areas', carefulAreas.isEmpty ? 'None' : carefulAreas.join(', ')), _reviewRow('Posture', postureIssues.isEmpty ? 'None' : postureIssues.join(', ')), _reviewRow('Surgeries', surgeryHistory.isEmpty ? 'None' : surgeryHistory.join(', '))]),
+    ]);
+  }
+
+  Widget _reviewSection(IconData icon, String title, List<Widget> rows) => Card(margin: const EdgeInsets.only(bottom: 12), child: Padding(padding: const EdgeInsets.all(16), child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [Row(children: [Icon(icon, color: Theme.of(context).colorScheme.primary), const SizedBox(width: 10), Text(title, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16))]), const Divider(height: 20), ...rows])));
+  Widget _reviewRow(String label, String value) => Padding(padding: const EdgeInsets.symmetric(vertical: 4), child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [SizedBox(width: 112, child: Text(label, style: TextStyle(color: Colors.grey.shade600, fontSize: 13))), Expanded(child: Text(value.isEmpty ? 'Not provided' : value, style: const TextStyle(fontWeight: FontWeight.w600)))]));
+
   // ---------- Step 8: review ----------
   Widget _review() {
     final rows = <MapEntry<String, String>>[
@@ -571,17 +609,30 @@ class _QuestionnaireState extends State<QuestionnaireScreen> {
         final ageValue = int.tryParse(age.text) ?? 0;
         final heightValue = double.tryParse(height.text) ?? 0;
         final startValue = double.tryParse(start.text) ?? 0;
-        if (name.text.trim().isEmpty || sex.isEmpty || ageValue <= 0 || heightValue <= 0 || startValue <= 0) {
-          return _error('Please complete all the fields.');
-        }
+        if (name.text.trim().isEmpty) return _error('Please enter your name.');
+        if (age.text.trim().isEmpty) return _error('Please enter your age.');
+        if (ageValue < 13 || ageValue > 120) return _error('Please enter an age between 13 and 120.');
+        if (sex.isEmpty) return _error('Please select your sex.');
+        if (height.text.trim().isEmpty) return _error('Please enter your height.');
+        if (heightValue <= 0) return _error('Height must be greater than 0.');
+        if (start.text.trim().isEmpty) return _error('Please enter your initial weight.');
+        if (startValue <= 0) return _error('Initial weight must be greater than 0.');
       case 2:
         if (goal.isEmpty) return _error('Please choose a goal.');
+        if (goal == 'Build muscle' && muscleFocus.isEmpty) return _error('Please choose at least one body part to build muscle.');
       case 3:
         if (experience.isEmpty) return _error('Please choose your experience level.');
       case 4:
         if (activity.isEmpty) return _error('Please choose your activity level.');
       case 5:
         if (locations.isEmpty) return _error('Please pick at least one location.');
+        if (locations.contains('Home') && homeEquipment.isEmpty) return _error('Please pick at least one equipment item for Home.');
+        if (locations.contains('Gym') && gymEquipment.isEmpty) return _error('Please pick equipment for Gym.');
+        if (locations.contains('Outdoors') && outdoorActivities.isEmpty) return _error('Please pick at least one outdoor activity or sport.');
+        if (locations.contains('Home') && homeEquipment.contains('Other') && homeOther.text.trim().isEmpty) return _error('Please describe your other Home equipment.');
+        if (locations.contains('Gym') && gymEquipment.contains('Other') && gymOther.text.trim().isEmpty) return _error('Please describe your other Gym equipment.');
+        if (locations.contains('Outdoors') && outdoorActivities.contains('Other') && outdoorOther.text.trim().isEmpty) return _error('Please describe your other Outdoor activity or sport.');
+        if (eatingLocation.isEmpty) return _error('Please choose where you usually eat.');
       case 7:
         if (workoutDays.isEmpty) return _error('Please pick at least one workout day.');
         if ((int.tryParse(minutes.text) ?? 0) <= 0) return _error('Please enter minutes per session.');
@@ -617,7 +668,7 @@ class _QuestionnaireState extends State<QuestionnaireScreen> {
     // 排到日历、以及经期感知逻辑都依赖这个顺序跟Day 1/2/3一一对应。
     final orderedWorkoutWeekdays = _weekdays.where(workoutDays.contains).toList();
     final info = UserPersonalInfo(
-      availableEquipment: {...homeEquipment, ...gymEquipment}.where((e) => e != 'None').toList(),
+      availableEquipment: _equipmentValues(homeEquipment, homeOther) + _equipmentValues(gymEquipment, gymOther) + _equipmentValues(outdoorActivities, outdoorOther),
       injuries: carefulAreas.map((a) => '$a (sensitive area)').toList(),
       postureIssues: postureIssues.toList(),
       surgeryHistory: surgeryHistory.map((s) => '$s surgery').toList(),
@@ -645,6 +696,8 @@ class _QuestionnaireState extends State<QuestionnaireScreen> {
       if (mounted) setState(() => _saving = false);
     }
   }
+
+  List<String> _equipmentValues(Set<String> selected, TextEditingController other) => selected.where((item) => item != 'None' && item != 'Other').toList() + (selected.contains('Other') && other.text.trim().isNotEmpty ? [other.text.trim()] : []);
 
   void _error(String message) => showAppToast(context, message, isError: true);
 }

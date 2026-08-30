@@ -64,7 +64,7 @@ class _AiBubbleState extends State<AiBubble> {
           color: iconOption.color,
           child: Padding(
             padding: const EdgeInsets.all(14),
-            child: Icon(iconOption.icon, color: Colors.white, size: 26),
+            child: Text(aiEmojiByKey(settings.iconKey), style: const TextStyle(fontSize: 27)),
           ),
         ),
       ),

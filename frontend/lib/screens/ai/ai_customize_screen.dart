@@ -16,11 +16,16 @@ class _AiCustomizeScreenState extends State<AiCustomizeScreen> {
   late TextEditingController _nameController;
   late String _selectedIconKey;
 
+  List<AiIconOption> get _petOptions {
+    final pet = widget.aiStore.settings.iconKey.startsWith('heart') || widget.aiStore.settings.iconKey.startsWith('dog_') ? 'dog' : widget.aiStore.settings.iconKey.startsWith('bolt') || widget.aiStore.settings.iconKey.startsWith('wolf_') ? 'wolf' : 'cat';
+    return List.generate(4, (index) => AiIconOption(key: '${pet}_$index', icon: Icons.circle, color: kAiIconOptions[index + 2].color));
+  }
+
   @override
   void initState() {
     super.initState();
     _nameController = TextEditingController(text: widget.aiStore.settings.name);
-    _selectedIconKey = widget.aiStore.settings.iconKey;
+    _selectedIconKey = widget.aiStore.settings.iconKey.startsWith('cat_') || widget.aiStore.settings.iconKey.startsWith('dog_') || widget.aiStore.settings.iconKey.startsWith('wolf_') ? widget.aiStore.settings.iconKey : '${widget.aiStore.settings.iconKey == 'heart' ? 'dog' : widget.aiStore.settings.iconKey == 'bolt' ? 'wolf' : 'cat'}_0';
   }
 
   @override
@@ -48,7 +53,7 @@ class _AiCustomizeScreenState extends State<AiCustomizeScreen> {
         padding: const EdgeInsets.all(20),
         children: [
           Center(
-            child: CircleAvatar(radius: 44, backgroundColor: selected.color, child: Icon(selected.icon, size: 40, color: Colors.white)),
+            child: CircleAvatar(radius: 44, backgroundColor: selected.color, child: Text(aiEmojiByKey(selected.key), style: const TextStyle(fontSize: 40))),
           ),
           const SizedBox(height: 24),
           const Text('Name', style: TextStyle(fontWeight: FontWeight.bold)),
@@ -64,7 +69,7 @@ class _AiCustomizeScreenState extends State<AiCustomizeScreen> {
           Wrap(
             spacing: 14,
             runSpacing: 14,
-            children: kAiIconOptions.map((option) {
+            children: _petOptions.map((option) {
               final isSelected = option.key == _selectedIconKey;
               return GestureDetector(
                 onTap: () => setState(() => _selectedIconKey = option.key),
@@ -74,7 +79,7 @@ class _AiCustomizeScreenState extends State<AiCustomizeScreen> {
                     shape: BoxShape.circle,
                     border: Border.all(color: isSelected ? option.color : Colors.transparent, width: 3),
                   ),
-                  child: CircleAvatar(radius: 28, backgroundColor: option.color, child: Icon(option.icon, color: Colors.white)),
+                  child: CircleAvatar(radius: 28, backgroundColor: option.color, child: Text(aiEmojiByKey(option.key), style: const TextStyle(fontSize: 28))),
                 ),
               );
             }).toList(),

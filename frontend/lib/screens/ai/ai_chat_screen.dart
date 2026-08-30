@@ -103,7 +103,7 @@ class _AiChatScreenState extends State<AiChatScreen> {
       appBar: AppBar(
         title: Row(
           children: [
-            CircleAvatar(backgroundColor: iconOption.color, radius: 16, child: Icon(iconOption.icon, size: 18, color: Colors.white)),
+            CircleAvatar(backgroundColor: iconOption.color, radius: 16, child: Text(aiEmojiByKey(settings.iconKey), style: const TextStyle(fontSize: 18))),
             const SizedBox(width: 10),
             Text(settings.name),
           ],

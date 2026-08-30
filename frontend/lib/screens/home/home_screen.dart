@@ -7,6 +7,7 @@ import '../../state/profile_store.dart';
 import '../../theme.dart';
 import '../../widgets/app_toast.dart';
 import 'calendar_screen.dart';
+import '../notifications/notifications_screen.dart';
 
 // 固定周期假设,跟backend那份(app/services/ai/prompts.py describe_cycle_context)完全对齐——
 // 前端这份只是为了能在Home页立刻显示,不用等一次网络请求;真正喂给AI的那份是backend自己算的。
@@ -28,11 +29,37 @@ class HomeScreen extends StatefulWidget {
 
 class _HomeScreenState extends State<HomeScreen> {
   List<WorkoutCompletion> _recent = [];
+  bool _hasUnreadNotifications = true;
+  double? _latestWeight;
 
   @override
   void initState() {
     super.initState();
     _loadRecent();
+    _loadLatestWeight();
+  }
+
+  Future<void> _loadLatestWeight() async {
+    try {
+      final report = await ApiService().getReport(periodType: 'weekly', accessToken: widget.store.accessToken);
+      if (mounted && report.weightRecords.isNotEmpty) setState(() => _latestWeight = report.weightRecords.last.weightKg);
+    } catch (_) {}
+  }
+
+  Future<void> _updateWeight() async {
+    final controller = TextEditingController(text: _latestWeight?.toStringAsFixed(1));
+    final value = await showDialog<double>(context: context, builder: (context) => AlertDialog(
+      title: const Text('Update current weight'),
+      content: TextField(controller: controller, autofocus: true, keyboardType: const TextInputType.numberWithOptions(decimal: true), decoration: const InputDecoration(suffixText: 'kg')),
+      actions: [TextButton(onPressed: () => Navigator.pop(context), child: const Text('Cancel')), FilledButton(onPressed: () { final v = double.tryParse(controller.text); if (v != null && v > 0 && v < 1000) Navigator.pop(context, v); }, child: const Text('Save'))],
+    ));
+    controller.dispose();
+    if (value == null) return;
+    try {
+      await ApiService().addWeightRecord(weightKg: value, accessToken: widget.store.accessToken);
+      if (mounted) setState(() => _latestWeight = value);
+      if (mounted) showAppToast(context, 'Weight updated');
+    } catch (_) { if (mounted) showAppToast(context, "Couldn't save your weight.", isError: true); }
   }
 
   Future<void> _loadRecent() async {
@@ -48,9 +75,9 @@ class _HomeScreenState extends State<HomeScreen> {
 
   String get _greeting {
     final hour = DateTime.now().hour;
-    if (hour < 12) return 'Good morning';
-    if (hour < 18) return 'Good afternoon';
-    return 'Good evening';
+    final timeGreeting = hour < 12 ? 'Good morning' : hour < 18 ? 'Good afternoon' : 'Good evening';
+    final name = widget.store.profile.name.trim();
+    return name.isEmpty ? timeGreeting : '$timeGreeting, $name';
   }
 
   String get _greetingEmoji {
@@ -65,7 +92,26 @@ class _HomeScreenState extends State<HomeScreen> {
     final scheme = Theme.of(context).colorScheme;
     final isFemale = widget.store.profile.sex.toLowerCase() == 'female';
     return Scaffold(
-      appBar: AppBar(title: const Text('PaceHealth')),
+      appBar: AppBar(
+        title: const Text('PaceHealth'),
+        actions: [
+          IconButton(
+            tooltip: 'Notifications',
+            onPressed: () {
+              setState(() => _hasUnreadNotifications = false);
+              Navigator.push(context, MaterialPageRoute(builder: (_) => NotificationsScreen(store: widget.store)));
+            },
+            icon: Stack(
+              clipBehavior: Clip.none,
+              children: [
+                const Icon(Icons.notifications_none_outlined),
+                if (_hasUnreadNotifications)
+                  Positioned(right: -1, top: -2, child: Container(width: 9, height: 9, decoration: BoxDecoration(color: Colors.redAccent, shape: BoxShape.circle, border: Border.all(color: Colors.white, width: 1.5)))),
+              ],
+            ),
+          ),
+        ],
+      ),
       body: ListView(
         padding: const EdgeInsets.fromLTRB(20, 8, 20, 28),
         children: [
@@ -78,8 +124,10 @@ class _HomeScreenState extends State<HomeScreen> {
           ),
           const SizedBox(height: 4),
           Text('Your health companion for steady progress.', style: TextStyle(color: Colors.grey.shade600)),
-          const SizedBox(height: 20),
-          InkWell(
+          const SizedBox(height: 10),
+          _CurrentWeightCard(weight: _latestWeight, onUpdate: _updateWeight),
+          const SizedBox(height: 10),
+          if (false) InkWell(
             borderRadius: BorderRadius.circular(24),
             onTap: () => widget.onNavigateToTab(1),
             child: Container(
@@ -106,7 +154,7 @@ class _HomeScreenState extends State<HomeScreen> {
               ),
             ),
           ),
-          const SizedBox(height: 20),
+          const SizedBox(height: 10),
           _GoalProgressCard(store: widget.store, recent: _recent),
           _WeeklyCalendarCard(
             store: widget.store,
@@ -116,6 +164,7 @@ class _HomeScreenState extends State<HomeScreen> {
             const SizedBox(height: 14),
             _PeriodCard(store: widget.store, onChanged: () => setState(() {})),
           ],
+          if (false) ...[
           const SizedBox(height: 24),
           Text('Quick access', style: Theme.of(context).textTheme.titleSmall),
           const SizedBox(height: 10),
@@ -133,7 +182,47 @@ class _HomeScreenState extends State<HomeScreen> {
               _QuickCard(emoji: '💬', label: 'Ask your coach', color: paceHealthAccents[3], onTap: null),
             ],
           ),
+          ],
         ],
+      ),
+    );
+  }
+}
+
+class _CurrentWeightCard extends StatelessWidget {
+  final double? weight;
+  final VoidCallback onUpdate;
+  const _CurrentWeightCard({required this.weight, required this.onUpdate});
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    return Card(
+      elevation: 0,
+      color: scheme.primary.withOpacity(0.08),
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Row(
+          children: [
+            Container(
+              width: 48,
+              height: 48,
+              decoration: BoxDecoration(color: scheme.primary.withOpacity(0.16), shape: BoxShape.circle),
+              child: Icon(Icons.monitor_weight_outlined, color: scheme.primary),
+            ),
+            const SizedBox(width: 14),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text('Current weight', style: Theme.of(context).textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w700)),
+                  const SizedBox(height: 3),
+                  Text(weight == null ? 'No weight recorded yet' : '${weight!.toStringAsFixed(1)} kg', style: Theme.of(context).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w800, color: scheme.primary)),
+                ],
+              ),
+            ),
+            FilledButton.tonal(onPressed: onUpdate, child: Text(weight == null ? 'Add' : 'Update')),
+          ],
+        ),
       ),
     );
   }
@@ -281,16 +370,23 @@ class _GoalProgressCard extends StatelessWidget {
                 ],
               ),
               const SizedBox(height: 12),
-              ClipRRect(
-                borderRadius: BorderRadius.circular(8),
-                child: LinearProgressIndicator(
-                  value: progress,
-                  minHeight: 8,
-                  backgroundColor: Colors.grey.shade200,
-                  valueColor: AlwaysStoppedAnimation(Theme.of(context).colorScheme.primary),
+              Center(
+                child: SizedBox(
+                  width: 180,
+                  height: 180,
+                  child: Stack(
+                    alignment: Alignment.center,
+                    children: [
+                      Positioned.fill(child: CircularProgressIndicator(value: progress, strokeWidth: 18, backgroundColor: Colors.grey.shade200, valueColor: AlwaysStoppedAnimation(Theme.of(context).colorScheme.primary))),
+                      Column(mainAxisSize: MainAxisSize.min, children: [
+                        Text('${(progress * 100).round()}%', style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 30)),
+                        Text('complete', style: TextStyle(color: Colors.grey.shade600, fontSize: 13)),
+                      ]),
+                    ],
+                  ),
                 ),
               ),
-              const SizedBox(height: 6),
+              const SizedBox(height: 14),
               Text(
                 'Estimate only, based on your experience level and workout frequency — moves as you complete workouts, not a guarantee.',
                 style: TextStyle(color: Colors.grey.shade500, fontSize: 10.5),
@@ -373,7 +469,7 @@ class _PeriodCardState extends State<_PeriodCard> {
           Expanded(
             child: Text('Log your last period to see it reflected in your plan.', style: TextStyle(color: Colors.grey.shade700, fontSize: 13)),
           ),
-          TextButton(onPressed: _saving ? null : _pickDate, child: Text(_saving ? '...' : 'Log')),
+          FilledButton.tonal(onPressed: _saving ? null : _pickDate, child: Text(_saving ? '...' : 'Log')),
         ],
       );
 
@@ -458,8 +554,8 @@ class _PeriodCardState extends State<_PeriodCard> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Text(label, style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 13)),
-              Text('Estimate only, based on a 28-day cycle', style: TextStyle(color: Colors.grey.shade500, fontSize: 11)),
+              Text(label, style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 15)),
+              if (!onPeriod) Text('Estimate only · based on a 28-day cycle', style: TextStyle(color: Colors.grey.shade500, fontSize: 11)),
             ],
           ),
         ),

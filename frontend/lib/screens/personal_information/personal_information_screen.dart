@@ -31,30 +31,39 @@ class _PersonalInformationScreenState extends State<PersonalInformationScreen> {
       body: ListView(
         padding: const EdgeInsets.all(20),
         children: [
-          SectionCard(title: 'Basic Information', children: [
+          SectionCard(title: 'Basic Information', icon: Icons.person_outline, children: [
             InfoRow(label: 'Name', value: p.name),
             InfoRow(label: 'Age', value: '${p.age}'),
             InfoRow(label: 'Sex', value: p.sex),
           ]),
           const SizedBox(height: 12),
-          SectionCard(title: 'Body & Goal', children: [
+          SectionCard(title: 'Body Measurements', icon: Icons.monitor_weight_outlined, children: [
             InfoRow(label: 'Height', value: '${p.heightCm} cm'),
-            InfoRow(label: 'Current weight', value: '${p.startWeightKg} kg'),
+            InfoRow(label: 'Starting weight', value: '${p.startWeightKg} kg'),
             InfoRow(label: 'Target weight', value: '${p.targetWeightKg} kg'),
+          ]),
+          const SizedBox(height: 12),
+          SectionCard(title: 'Goal', icon: Icons.flag_outlined, children: [
             InfoRow(label: 'Goal', value: p.goal),
           ]),
           const SizedBox(height: 12),
-          SectionCard(title: 'Lifestyle & Exercise', children: [
+          SectionCard(title: 'Lifestyle', icon: Icons.directions_walk_outlined, children: [
             InfoRow(label: 'Lifestyle', value: p.lifestyle),
+          ]),
+          const SizedBox(height: 12),
+          SectionCard(title: 'Exercise Routine', icon: Icons.fitness_center_outlined, children: [
             InfoRow(label: 'Frequency', value: '${p.exerciseFrequencyPerWeek} times per week'),
             InfoRow(label: 'Duration', value: '${p.exerciseDurationMinutes} min'),
             InfoRow(label: 'Exercise habit', value: p.exerciseHabit),
             InfoRow(label: 'Location', value: p.exerciseLocation),
           ]),
           const SizedBox(height: 12),
-          SectionCard(title: 'Health details', children: [
-            InfoRow(label: 'Injuries', value: info.injuries.isEmpty ? 'None' : info.injuries.join(', ')),
+          SectionCard(title: 'Equipment', icon: Icons.sports_gymnastics_outlined, children: [
             InfoRow(label: 'Equipment', value: info.availableEquipment.isEmpty ? 'None' : info.availableEquipment.join(', ')),
+          ]),
+          const SizedBox(height: 12),
+          SectionCard(title: 'Physical Considerations', icon: Icons.health_and_safety_outlined, children: [
+            InfoRow(label: 'Injuries', value: info.injuries.isEmpty ? 'None' : info.injuries.join(', ')),
             InfoRow(label: 'Posture issues', value: info.postureIssues.isEmpty ? 'None' : info.postureIssues.join(', ')),
             InfoRow(label: 'Past surgeries', value: info.surgeryHistory.isEmpty ? 'None' : info.surgeryHistory.join(', ')),
           ]),

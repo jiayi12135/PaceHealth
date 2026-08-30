@@ -111,10 +111,28 @@ class _LoginScreenState extends State<LoginScreen> {
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
                   Center(
-                    child: CircleAvatar(
-                      radius: 36,
-                      backgroundColor: scheme.primary,
-                      child: const Icon(Icons.favorite_rounded, color: Colors.white, size: 34),
+                    child: Container(
+                      width: 90,
+                      height: 90,
+                      decoration: const BoxDecoration(
+                        shape: BoxShape.circle,
+                        boxShadow: [
+                          BoxShadow(
+                            color: Color(0x45000000),
+                            blurRadius: 8,
+                            spreadRadius: 1,
+                            offset: Offset(-4, 6),
+                          ),
+                        ],
+                      ),
+                      child: ClipOval(
+                        child: Image.asset(
+                          'assets/images/PaceHealth_RoundLogo.png',
+                          width: 90,
+                          height: 90,
+                          fit: BoxFit.cover,
+                        ),
+                      ),
                     ),
                   ),
                   const SizedBox(height: 24),

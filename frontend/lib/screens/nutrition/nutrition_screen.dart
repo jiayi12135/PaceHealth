@@ -132,17 +132,12 @@ class _NutritionScreenState extends State<NutritionScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(title: const Text('Nutrition')),
-      floatingActionButton: FloatingActionButton.extended(
-        onPressed: _scanning ? null : _openScanSheet,
-        icon: _scanning ? const SizedBox(height: 18, width: 18, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white)) : const Icon(Icons.camera_alt),
-        label: Text(_scanning ? 'Estimating…' : 'Scan food'),
-      ),
       body: RefreshIndicator(
         onRefresh: _loadLog,
         child: ListView(
-          padding: const EdgeInsets.fromLTRB(20, 12, 20, 100),
+          padding: const EdgeInsets.fromLTRB(20, 12, 20, 24),
           children: [
-            _TotalCaloriesCard(totalCalories: _log.totalCalories, loading: _loadingLog),
+            _TotalCaloriesCard(totalCalories: _log.totalCalories, mealCount: _log.scans.length, loading: _loadingLog),
             if (!_loadingLog && _log.scans.isNotEmpty) ...[
               const SizedBox(height: 12),
               _MacroTotalsRow(scans: _log.scans),
@@ -156,24 +151,58 @@ class _NutritionScreenState extends State<NutritionScreen> {
               ),
             ],
             const SizedBox(height: 16),
-            Card(
-              child: ListTile(
-                onTap: _openMealIdeas,
-                leading: CircleAvatar(backgroundColor: Theme.of(context).colorScheme.secondary.withOpacity(0.15), child: Icon(Icons.auto_awesome, color: Theme.of(context).colorScheme.secondary)),
-                title: const Text('Get meal ideas', style: TextStyle(fontWeight: FontWeight.bold)),
-                subtitle: const Text('Recipes based on what you have, or scan your ingredients'),
-                trailing: const Icon(Icons.chevron_right),
-              ),
+            Text(_log.scans.isEmpty ? 'Get started' : 'Food tools', style: Theme.of(context).textTheme.titleSmall),
+            const SizedBox(height: 8),
+            Row(
+              children: [
+                Expanded(
+                  child: _FoodActionCard(
+                    onTap: _scanning ? null : _openScanSheet,
+                    backgroundColor: Theme.of(context).colorScheme.primary.withValues(alpha: 0.16),
+                    accentColor: Theme.of(context).colorScheme.primary,
+                    leading: _scanning
+                        ? SizedBox.square(
+                            dimension: 16,
+                            child: CircularProgressIndicator(strokeWidth: 2, color: Theme.of(context).colorScheme.primary),
+                          )
+                        : const Icon(Icons.camera_alt_outlined, size: 18),
+                    title: _scanning ? 'Scanning…' : 'Scan meal',
+                  ),
+                ),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: _FoodActionCard(
+                    onTap: _openMealIdeas,
+                    backgroundColor: Theme.of(context).colorScheme.primary.withValues(alpha: 0.10),
+                    accentColor: Theme.of(context).colorScheme.primary,
+                    leading: const Icon(Icons.menu_book_outlined, size: 18),
+                    title: 'Meal planner',
+                  ),
+                ),
+              ],
             ),
-            const SizedBox(height: 20),
-            Text("Today's scans", style: Theme.of(context).textTheme.titleSmall?.copyWith(fontWeight: FontWeight.bold)),
+            const SizedBox(height: 12),
+            Text("Today's meals", style: Theme.of(context).textTheme.titleSmall?.copyWith(fontWeight: FontWeight.bold)),
             const SizedBox(height: 8),
             if (_loadingLog)
               const Padding(padding: EdgeInsets.symmetric(vertical: 24), child: Center(child: CircularProgressIndicator()))
             else if (_log.scans.isEmpty)
-              Padding(
-                padding: const EdgeInsets.symmetric(vertical: 24),
-                child: Center(child: Text('No food scanned yet today. Tap "Scan food" to log a meal.', textAlign: TextAlign.center, style: TextStyle(color: Colors.grey.shade600))),
+              Card(
+                color: Theme.of(context).colorScheme.surface.withValues(alpha: 0.78),
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 26),
+                  child: Column(
+                    children: [
+                      Text('No meals logged today', style: Theme.of(context).textTheme.titleSmall),
+                      const SizedBox(height: 5),
+                      Text(
+                        'Scan a meal to start building your daily summary.',
+                        textAlign: TextAlign.center,
+                        style: TextStyle(color: Colors.grey.shade600),
+                      ),
+                    ],
+                  ),
+                ),
               )
             else
               ..._log.scans.map((scan) => _FoodScanTile(key: ValueKey(scan.scanId ?? scan.foodName), scan: scan, onDelete: () => _deleteScan(scan))),
@@ -184,10 +213,58 @@ class _NutritionScreenState extends State<NutritionScreen> {
   }
 }
 
+class _FoodActionCard extends StatelessWidget {
+  final VoidCallback? onTap;
+  final Color backgroundColor;
+  final Color accentColor;
+  final Widget leading;
+  final String title;
+
+  const _FoodActionCard({
+    required this.onTap,
+    required this.backgroundColor,
+    required this.accentColor,
+    required this.leading,
+    required this.title,
+  });
+
+  @override
+  Widget build(BuildContext context) => Material(
+        color: backgroundColor,
+        borderRadius: BorderRadius.circular(18),
+        child: InkWell(
+          onTap: onTap,
+          borderRadius: BorderRadius.circular(18),
+          child: SizedBox(
+            height: 52,
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 12),
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  IconTheme(data: IconThemeData(color: accentColor), child: leading),
+                  const SizedBox(width: 8),
+                  Flexible(
+                    child: Text(
+                      title,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(color: accentColor, fontSize: 12, fontWeight: FontWeight.w800),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ),
+      );
+}
+
 class _TotalCaloriesCard extends StatelessWidget {
   final int totalCalories;
+  final int mealCount;
   final bool loading;
-  const _TotalCaloriesCard({required this.totalCalories, required this.loading});
+  const _TotalCaloriesCard({required this.totalCalories, required this.mealCount, required this.loading});
 
   @override
   Widget build(BuildContext context) => Card(
@@ -195,22 +272,41 @@ class _TotalCaloriesCard extends StatelessWidget {
         child: Padding(
           padding: const EdgeInsets.all(20),
           child: Row(
+            crossAxisAlignment: CrossAxisAlignment.end,
             children: [
-              const Icon(Icons.local_fire_department, size: 32),
-              const SizedBox(width: 16),
-              Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text('Today\'s calories', style: Theme.of(context).textTheme.bodyMedium),
-                  Text(loading ? '…' : '$totalCalories kcal', style: Theme.of(context).textTheme.headlineSmall?.copyWith(fontWeight: FontWeight.bold)),
-                ],
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text('TODAY\'S INTAKE', style: TextStyle(color: Theme.of(context).colorScheme.primary, fontSize: 10, fontWeight: FontWeight.w800, letterSpacing: 0.8)),
+                    const SizedBox(height: 5),
+                    Row(
+                      crossAxisAlignment: CrossAxisAlignment.end,
+                      children: [
+                        Text(loading ? '…' : '$totalCalories', style: Theme.of(context).textTheme.headlineMedium?.copyWith(fontWeight: FontWeight.w800, height: 1)),
+                        const SizedBox(width: 5),
+                        Padding(
+                          padding: const EdgeInsets.only(bottom: 2),
+                          child: Text('kcal', style: Theme.of(context).textTheme.bodyMedium?.copyWith(fontWeight: FontWeight.w600)),
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
+              ),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                decoration: BoxDecoration(color: Theme.of(context).colorScheme.surface.withValues(alpha: 0.75), borderRadius: BorderRadius.circular(16)),
+                child: Text(
+                  loading ? '…' : '$mealCount ${mealCount == 1 ? 'meal' : 'meals'}',
+                  style: Theme.of(context).textTheme.bodySmall?.copyWith(fontWeight: FontWeight.w700),
+                ),
               ),
             ],
           ),
         ),
       );
 }
-
 class _MacroTotalsRow extends StatelessWidget {
   final List<FoodScanResult> scans;
   const _MacroTotalsRow({required this.scans});

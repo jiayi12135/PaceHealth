@@ -54,28 +54,108 @@ class _ReportScreenState extends State<ReportScreen> {
 
   Future<void> _addWeight() async {
     final controller = TextEditingController();
+    String? inputError;
     final value = await showDialog<double>(
       context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('Log your weight'),
-        content: TextField(
-          controller: controller,
-          keyboardType: const TextInputType.numberWithOptions(decimal: true),
-          autofocus: true,
-          decoration: const InputDecoration(suffixText: 'kg', hintText: 'e.g. 62.5'),
-        ),
-        actions: [
-          TextButton(onPressed: () => Navigator.pop(context), child: const Text('Cancel')),
-          FilledButton(
-            onPressed: () {
-              final parsed = double.tryParse(controller.text);
-              if (parsed != null && parsed > 0 && parsed < 1000) Navigator.pop(context, parsed);
-            },
-            child: const Text('Save'),
-          ),
-        ],
+      builder: (dialogContext) => StatefulBuilder(
+        builder: (context, setDialogState) {
+          final scheme = Theme.of(context).colorScheme;
+          return Dialog(
+            backgroundColor: Colors.transparent,
+            insetPadding: const EdgeInsets.symmetric(horizontal: 24),
+            child: Container(
+              padding: const EdgeInsets.all(24),
+              decoration: BoxDecoration(
+                color: scheme.surface,
+                borderRadius: BorderRadius.circular(28),
+                boxShadow: [
+                  BoxShadow(
+                    color: Colors.black.withValues(alpha: 0.12),
+                    blurRadius: 32,
+                    offset: const Offset(0, 14),
+                  ),
+                ],
+              ),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    children: [
+                      Container(
+                        width: 52,
+                        height: 52,
+                        decoration: BoxDecoration(
+                          color: scheme.primary.withValues(alpha: 0.12),
+                          shape: BoxShape.circle,
+                        ),
+                        child: Icon(Icons.monitor_weight_outlined, color: scheme.primary),
+                      ),
+                      const SizedBox(width: 14),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text('Log your weight', style: Theme.of(context).textTheme.titleLarge),
+                            const SizedBox(height: 2),
+                            Text(
+                              'Keep your progress and report up to date.',
+                              style: Theme.of(context).textTheme.bodySmall?.copyWith(color: scheme.onSurfaceVariant),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 24),
+                  TextField(
+                    controller: controller,
+                    keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                    autofocus: true,
+                    onChanged: (_) {
+                      if (inputError != null) setDialogState(() => inputError = null);
+                    },
+                    decoration: InputDecoration(
+                      labelText: 'Current weight',
+                      hintText: '62.5',
+                      suffixText: 'kg',
+                      errorText: inputError,
+                      prefixIcon: const Icon(Icons.scale_outlined),
+                    ),
+                  ),
+                  const SizedBox(height: 22),
+                  Row(
+                    children: [
+                      Expanded(
+                        child: OutlinedButton(
+                          onPressed: () => Navigator.pop(dialogContext),
+                          child: const Text('Cancel'),
+                        ),
+                      ),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: FilledButton(
+                          onPressed: () {
+                            final parsed = double.tryParse(controller.text.trim());
+                            if (parsed == null || parsed <= 0 || parsed >= 1000) {
+                              setDialogState(() => inputError = 'Enter a valid weight');
+                              return;
+                            }
+                            Navigator.pop(dialogContext, parsed);
+                          },
+                          child: const Text('Save weight'),
+                        ),
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+            ),
+          );
+        },
       ),
     );
+    controller.dispose();
     if (value == null) return;
 
     try {
@@ -88,30 +168,121 @@ class _ReportScreenState extends State<ReportScreen> {
     }
   }
 
+  void _showWeightInfo() {
+    showModalBottomSheet<void>(
+      context: context,
+      showDragHandle: true,
+      builder: (sheetContext) {
+        final scheme = Theme.of(sheetContext).colorScheme;
+        return SafeArea(
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(24, 6, 24, 28),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  children: [
+                    Container(
+                      width: 48,
+                      height: 48,
+                      decoration: BoxDecoration(
+                        color: scheme.primary.withValues(alpha: 0.12),
+                        shape: BoxShape.circle,
+                      ),
+                      child: Icon(Icons.monitor_weight_outlined, color: scheme.primary),
+                    ),
+                    const SizedBox(width: 14),
+                    Expanded(child: Text('About weight tracking', style: Theme.of(sheetContext).textTheme.titleLarge)),
+                  ],
+                ),
+                const SizedBox(height: 18),
+                Text(
+                  'PaceHealth needs at least two weigh-ins in the selected period to calculate a meaningful change and show your trend.',
+                  style: Theme.of(sheetContext).textTheme.bodyMedium?.copyWith(height: 1.45),
+                ),
+                const SizedBox(height: 16),
+                const _WeightInfoRow(
+                  icon: Icons.calendar_today_outlined,
+                  text: 'Weekly reports need two weigh-ins within 7 days; monthly reports need two within 30 days.',
+                ),
+                const SizedBox(height: 12),
+                const _WeightInfoRow(
+                  icon: Icons.schedule_outlined,
+                  text: 'For a more consistent comparison, weigh yourself under similar conditions each time.',
+                ),
+                const SizedBox(height: 12),
+                const _WeightInfoRow(
+                  icon: Icons.trending_up_rounded,
+                  text: 'Your report focuses on the overall trend, not one daily measurement.',
+                ),
+              ],
+            ),
+          ),
+        );
+      },
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
     return Scaffold(
-      appBar: AppBar(title: const Text('Report')),
-      floatingActionButton: FloatingActionButton.extended(
-        onPressed: _addWeight,
-        icon: const Icon(Icons.monitor_weight_outlined),
-        label: const Text('Log weight'),
+      appBar: AppBar(
+        title: const Text('Report'),
+        actions: [
+          FilledButton.tonalIcon(
+            onPressed: _addWeight,
+            style: FilledButton.styleFrom(
+              minimumSize: Size.zero,
+              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+              tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+              backgroundColor: scheme.primary.withValues(alpha: 0.12),
+              foregroundColor: scheme.primary,
+            ),
+            icon: const Icon(Icons.add_rounded, size: 19),
+            label: const Text('Log weight'),
+          ),
+          const SizedBox(width: 12),
+        ],
       ),
       body: RefreshIndicator(
         onRefresh: _load,
         child: ListView(
-          padding: const EdgeInsets.fromLTRB(20, 8, 20, 100),
+          padding: const EdgeInsets.fromLTRB(20, 8, 20, 24),
           children: [
-            SegmentedButton<String>(
-              segments: const [
-                ButtonSegment(value: 'weekly', label: Text('Weekly')),
-                ButtonSegment(value: 'monthly', label: Text('Monthly')),
-              ],
-              selected: {_period},
-              onSelectionChanged: (selection) {
-                setState(() => _period = selection.first);
-                _load();
-              },
+            Align(
+              alignment: Alignment.centerLeft,
+              child: Container(
+                padding: const EdgeInsets.all(4),
+                decoration: BoxDecoration(
+                  color: scheme.surface,
+                  borderRadius: BorderRadius.circular(22),
+                ),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    _ReportPeriodTab(
+                      label: 'Weekly',
+                      selected: _period == 'weekly',
+                      onTap: () {
+                        if (_period == 'weekly') return;
+                        setState(() => _period = 'weekly');
+                        _load();
+                      },
+                    ),
+                    _ReportPeriodTab(
+                      label: 'Monthly',
+                      selected: _period == 'monthly',
+                      onTap: () {
+                        if (_period == 'monthly') return;
+                        setState(() => _period = 'monthly');
+                        _load();
+                      },
+                    ),
+                  ],
+                ),
+              ),
             ),
             const SizedBox(height: 16),
             if (_loading)
@@ -122,31 +293,31 @@ class _ReportScreenState extends State<ReportScreen> {
                 child: Center(child: Text(_error!, style: TextStyle(color: Colors.grey.shade600))),
               )
             else if (_report != null) ...[
-              if (!_report!.hasEnoughData)
-                Card(
-                  child: Padding(
-                    padding: const EdgeInsets.all(20),
-                    child: Column(
-                      children: [
-                        const Icon(Icons.scale_outlined, size: 40),
-                        const SizedBox(height: 10),
-                        Text(
-                          'Not enough weight records this ${_period == 'weekly' ? 'week' : 'month'} yet. Log your weight at least twice to see your trend.',
-                          textAlign: TextAlign.center,
-                          style: TextStyle(color: Colors.grey.shade700),
-                        ),
-                      ],
+              if (_report!.hasEnoughData) ...[
+                Row(
+                  children: [
+                    Icon(Icons.monitor_weight_outlined, size: 20, color: Theme.of(context).colorScheme.primary),
+                    const SizedBox(width: 8),
+                    Text('Weight Progress', style: Theme.of(context).textTheme.titleMedium),
+                    const Spacer(),
+                    Text('${_report!.weightRecords.length} check-ins', style: Theme.of(context).textTheme.bodySmall),
+                    const SizedBox(width: 2),
+                    IconButton(
+                      onPressed: _showWeightInfo,
+                      tooltip: 'About Weight Tracking',
+                      visualDensity: VisualDensity.compact,
+                      icon: const Icon(Icons.info_outline_rounded, size: 19),
                     ),
-                  ),
-                )
-              else ...[
+                  ],
+                ),
+                const SizedBox(height: 10),
                 Row(
                   children: [
                     Expanded(child: _StatCard(label: 'Change', value: '${_report!.deltaKg! > 0 ? '+' : ''}${_report!.deltaKg!.toStringAsFixed(1)} kg')),
                     const SizedBox(width: 10),
                     Expanded(
                       child: _StatCard(
-                        label: 'To goal',
+                        label: 'To Goal',
                         value: _report!.progressToGoalPercent != null ? '${_report!.progressToGoalPercent!.toStringAsFixed(0)}%' : '—',
                       ),
                     ),
@@ -161,9 +332,23 @@ class _ReportScreenState extends State<ReportScreen> {
                 ),
                 const SizedBox(height: 14),
                 _WeightTrend(records: _report!.weightRecords),
+                const SizedBox(height: 14),
               ],
-              const SizedBox(height: 14),
-              if (_report!.summary.isNotEmpty)
+              _CompletionChart(workouts: _workouts, periodLabel: _period == 'weekly' ? 'this week' : 'this month'),
+              if (_workouts.isNotEmpty) ...[
+                const SizedBox(height: 14),
+                _WorkoutHistory(workouts: _workouts, plan: widget.store.plan),
+              ],
+              if (!_report!.hasEnoughData) ...[
+                const SizedBox(height: 14),
+                _WeightDataPrompt(
+                  periodLabel: _period == 'weekly' ? 'week' : 'month',
+                  currentRecords: _report!.weightRecords.length,
+                  onShowInfo: _showWeightInfo,
+                ),
+              ],
+              if (_report!.summary.isNotEmpty) ...[
+                const SizedBox(height: 14),
                 Card(
                   child: Padding(
                     padding: const EdgeInsets.all(16),
@@ -174,7 +359,10 @@ class _ReportScreenState extends State<ReportScreen> {
                           children: [
                             const Icon(Icons.auto_awesome, size: 18),
                             const SizedBox(width: 6),
-                            Text('Coach summary', style: Theme.of(context).textTheme.titleSmall),
+                            Text(
+                              _report!.hasEnoughData ? 'Coach Insight' : 'Coach Guidance',
+                              style: Theme.of(context).textTheme.titleSmall,
+                            ),
                           ],
                         ),
                         const SizedBox(height: 8),
@@ -183,16 +371,126 @@ class _ReportScreenState extends State<ReportScreen> {
                     ),
                   ),
                 ),
-              const SizedBox(height: 14),
-              _CompletionChart(workouts: _workouts, periodLabel: _period == 'weekly' ? 'this week' : 'this month'),
-              const SizedBox(height: 14),
-              _WorkoutHistory(workouts: _workouts, plan: widget.store.plan),
+              ],
             ],
           ],
         ),
       ),
     );
   }
+}
+
+class _ReportPeriodTab extends StatelessWidget {
+  final String label;
+  final bool selected;
+  final VoidCallback onTap;
+
+  const _ReportPeriodTab({required this.label, required this.selected, required this.onTap});
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    return Material(
+      color: selected ? scheme.primary : Colors.transparent,
+      borderRadius: BorderRadius.circular(18),
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(18),
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 9),
+          child: Text(
+            label,
+            style: TextStyle(
+              color: selected ? scheme.onPrimary : scheme.onSurfaceVariant,
+              fontSize: 12,
+              fontWeight: selected ? FontWeight.w700 : FontWeight.w600,
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _WeightDataPrompt extends StatelessWidget {
+  final String periodLabel;
+  final int currentRecords;
+  final VoidCallback onShowInfo;
+
+  const _WeightDataPrompt({required this.periodLabel, required this.currentRecords, required this.onShowInfo});
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    return Card(
+      color: scheme.secondaryContainer.withValues(alpha: 0.55),
+      child: Padding(
+        padding: const EdgeInsets.all(18),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Container(
+                  width: 44,
+                  height: 44,
+                  decoration: BoxDecoration(color: scheme.surface.withValues(alpha: 0.85), shape: BoxShape.circle),
+                  child: Icon(Icons.show_chart_rounded, color: scheme.secondary),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text('Unlock your weight trend', style: Theme.of(context).textTheme.titleSmall),
+                      const SizedBox(height: 4),
+                      Text(
+                        '$currentRecords of 2 weigh-ins logged this $periodLabel',
+                        style: Theme.of(context).textTheme.bodySmall?.copyWith(color: scheme.onSurfaceVariant, height: 1.35),
+                      ),
+                    ],
+                  ),
+                ),
+                IconButton(
+                  onPressed: onShowInfo,
+                  tooltip: 'About weight tracking',
+                  visualDensity: VisualDensity.compact,
+                  icon: const Icon(Icons.info_outline_rounded, size: 19),
+                ),
+              ],
+            ),
+            const SizedBox(height: 16),
+            ClipRRect(
+              borderRadius: BorderRadius.circular(8),
+              child: LinearProgressIndicator(
+                value: currentRecords.clamp(0, 2) / 2,
+                minHeight: 7,
+                backgroundColor: scheme.surface.withValues(alpha: 0.7),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _WeightInfoRow extends StatelessWidget {
+  final IconData icon;
+  final String text;
+
+  const _WeightInfoRow({required this.icon, required this.text});
+
+  @override
+  Widget build(BuildContext context) => Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Icon(icon, size: 20, color: Theme.of(context).colorScheme.primary),
+          const SizedBox(width: 12),
+          Expanded(child: Text(text, style: Theme.of(context).textTheme.bodyMedium?.copyWith(height: 1.35))),
+        ],
+      );
 }
 
 class _StatCard extends StatelessWidget {
@@ -229,7 +527,7 @@ class _WeightTrend extends StatelessWidget {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text('Weight trend', style: Theme.of(context).textTheme.titleSmall),
+            Text('Weight Trend', style: Theme.of(context).textTheme.titleSmall),
             const SizedBox(height: 12),
             SizedBox(
               height: 120,
@@ -304,9 +602,12 @@ class _CompletionChart extends StatelessWidget {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text('Workout completion', style: Theme.of(context).textTheme.titleSmall),
+            Text('Workout Activity', style: Theme.of(context).textTheme.titleSmall),
             const SizedBox(height: 4),
-            Text('$periodLabel · $completed done, $skipped skipped', style: TextStyle(color: Colors.grey.shade600, fontSize: 12)),
+            Text(
+              total == 0 ? 'No sessions logged $periodLabel' : '$periodLabel · $total ${total == 1 ? 'session' : 'sessions'} logged',
+              style: TextStyle(color: Colors.grey.shade600, fontSize: 12),
+            ),
             const SizedBox(height: 16),
             if (total == 0)
               Padding(
@@ -430,7 +731,7 @@ class _WorkoutHistory extends StatelessWidget {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text('Workout history', style: Theme.of(context).textTheme.titleSmall),
+            Text('Workout History', style: Theme.of(context).textTheme.titleSmall),
             const SizedBox(height: 10),
             ...workouts.map((w) {
               final completed = w.status == 'completed';

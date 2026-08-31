@@ -204,23 +204,106 @@ class _WorkoutSessionScreenState extends State<WorkoutSessionScreen> {
     showDialog<void>(
       context: context,
       barrierDismissible: false,
-      builder: (dialogContext) => AlertDialog(
-        icon: const Text('🎉', style: TextStyle(fontSize: 40)),
-        title: const Text('Workout complete!'),
-        content: Text(
-          '${widget.displayDay} · ${_formatMmSs(actualTotal)} · ${completedIndexes.length}/${widget.exercises.length} done'
-          '${skippedIndexes.isNotEmpty ? ' · ${skippedIndexes.length} skipped' : ''}',
-        ),
-        actions: [
-          FilledButton(
-            onPressed: () {
-              Navigator.pop(dialogContext);
-              Navigator.pop(context);
-            },
-            child: const Text('Done'),
+      builder: (dialogContext) {
+        final scheme = Theme.of(dialogContext).colorScheme;
+        return Dialog(
+          backgroundColor: Colors.transparent,
+          insetPadding: const EdgeInsets.symmetric(horizontal: 24),
+          child: Container(
+            padding: const EdgeInsets.fromLTRB(24, 28, 24, 24),
+            decoration: BoxDecoration(
+              color: scheme.surface,
+              borderRadius: BorderRadius.circular(28),
+              boxShadow: [
+                BoxShadow(
+                  color: Colors.black.withValues(alpha: 0.12),
+                  blurRadius: 32,
+                  offset: const Offset(0, 14),
+                ),
+              ],
+            ),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Container(
+                  width: 72,
+                  height: 72,
+                  decoration: BoxDecoration(
+                    color: scheme.primary.withValues(alpha: 0.12),
+                    shape: BoxShape.circle,
+                  ),
+                  child: Icon(Icons.check_rounded,
+                      size: 42, color: scheme.primary),
+                ),
+                const SizedBox(height: 20),
+                Text(
+                  'Workout complete',
+                  textAlign: TextAlign.center,
+                  style: Theme.of(dialogContext).textTheme.headlineSmall,
+                ),
+                const SizedBox(height: 6),
+                Text(
+                  widget.displayDay,
+                  style: Theme.of(dialogContext).textTheme.bodyMedium?.copyWith(
+                        color: scheme.onSurfaceVariant,
+                      ),
+                ),
+                const SizedBox(height: 22),
+                Container(
+                  padding: const EdgeInsets.symmetric(vertical: 16),
+                  decoration: BoxDecoration(
+                    color: scheme.primary.withValues(alpha: 0.07),
+                    borderRadius: BorderRadius.circular(20),
+                  ),
+                  child: Row(
+                    children: [
+                      Expanded(
+                        child: _CompletionMetric(
+                          value: _formatMmSs(actualTotal),
+                          label: 'Time',
+                        ),
+                      ),
+                      SizedBox(
+                        height: 34,
+                        child: VerticalDivider(color: scheme.outlineVariant),
+                      ),
+                      Expanded(
+                        child: _CompletionMetric(
+                          value:
+                              '${completedIndexes.length}/${widget.exercises.length}',
+                          label: 'Completed',
+                        ),
+                      ),
+                      SizedBox(
+                        height: 34,
+                        child: VerticalDivider(color: scheme.outlineVariant),
+                      ),
+                      Expanded(
+                        child: _CompletionMetric(
+                          value: '${skippedIndexes.length}',
+                          label: 'Skipped',
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(height: 22),
+                SizedBox(
+                  width: double.infinity,
+                  child: FilledButton.icon(
+                    onPressed: () {
+                      Navigator.pop(dialogContext);
+                      Navigator.pop(context);
+                    },
+                    icon: const Icon(Icons.arrow_forward_rounded),
+                    label: const Text('Done'),
+                  ),
+                ),
+              ],
+            ),
           ),
-        ],
-      ),
+        );
+      },
     );
   }
 
@@ -519,5 +602,32 @@ class _SkippedPage extends StatelessWidget {
             ],
           ),
         ),
+      );
+}
+
+class _CompletionMetric extends StatelessWidget {
+  final String value;
+  final String label;
+
+  const _CompletionMetric({required this.value, required this.label});
+
+  @override
+  Widget build(BuildContext context) => Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Text(
+            value,
+            style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                  fontWeight: FontWeight.w800,
+                ),
+          ),
+          const SizedBox(height: 3),
+          Text(
+            label,
+            style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                  color: Theme.of(context).colorScheme.onSurfaceVariant,
+                ),
+          ),
+        ],
       );
 }

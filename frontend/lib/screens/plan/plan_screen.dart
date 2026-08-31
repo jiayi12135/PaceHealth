@@ -202,22 +202,63 @@ class _PlanView extends StatelessWidget {
       byDay.putIfAbsent(exercise.day, () => []).add(exercise);
     }
     final dayKeys = byDay.keys.toList();
+    final loggedSessions = recentByDay.values.where((record) => record.status == 'completed' || record.status == 'skipped').length;
+    final plannedSessions = plan.weeklyFrequency > 0 ? plan.weeklyFrequency : dayKeys.length;
+    final progress = plannedSessions == 0 ? 0.0 : (loggedSessions / plannedSessions).clamp(0.0, 1.0).toDouble();
+    final scheme = Theme.of(context).colorScheme;
 
     return ListView(
       padding: const EdgeInsets.fromLTRB(20, 12, 20, 28),
       children: [
-        Card(
-          color: Theme.of(context).colorScheme.primaryContainer,
-          child: Padding(
-            padding: const EdgeInsets.all(20),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(plan.planName, style: Theme.of(context).textTheme.titleLarge),
-                const SizedBox(height: 4),
-                Text('${plan.goal} · ${plan.weeklyFrequency}x / week', style: TextStyle(color: Colors.grey.shade700)),
-              ],
+        Container(
+          padding: const EdgeInsets.all(18),
+          decoration: BoxDecoration(
+            gradient: LinearGradient(
+              colors: [scheme.primary.withValues(alpha: 0.18), scheme.secondary.withValues(alpha: 0.10)],
+              begin: Alignment.topLeft,
+              end: Alignment.bottomRight,
             ),
+            borderRadius: BorderRadius.circular(24),
+            border: Border.all(color: scheme.primary.withValues(alpha: 0.08)),
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                children: [
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+                    decoration: BoxDecoration(color: scheme.surface.withValues(alpha: 0.78), borderRadius: BorderRadius.circular(16)),
+                    child: Text('ACTIVE PLAN', style: TextStyle(color: scheme.primary, fontSize: 10, fontWeight: FontWeight.w800, letterSpacing: 0.6)),
+                  ),
+                  const Spacer(),
+                  Text(
+                    '$loggedSessions of $plannedSessions sessions',
+                    style: Theme.of(context).textTheme.bodySmall?.copyWith(fontWeight: FontWeight.w700, color: scheme.onSurfaceVariant),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 14),
+              Text(plan.planName, style: Theme.of(context).textTheme.titleLarge?.copyWith(fontSize: 21, height: 1.15)),
+              const SizedBox(height: 12),
+              Wrap(
+                spacing: 16,
+                runSpacing: 8,
+                children: [
+                  _PlanMetaChip(icon: Icons.flag_outlined, label: plan.goal),
+                  _PlanMetaChip(icon: Icons.calendar_today_outlined, label: '${plan.weeklyFrequency}x per week'),
+                ],
+              ),
+              const SizedBox(height: 14),
+              ClipRRect(
+                borderRadius: BorderRadius.circular(8),
+                child: LinearProgressIndicator(
+                  value: progress,
+                  minHeight: 7,
+                  backgroundColor: scheme.surface.withValues(alpha: 0.7),
+                ),
+              ),
+            ],
           ),
         ),
         const SizedBox(height: 20),
@@ -235,6 +276,31 @@ class _PlanView extends StatelessWidget {
             showReschedule: false,
           );
         }),
+      ],
+    );
+  }
+}
+
+class _PlanMetaChip extends StatelessWidget {
+  final IconData icon;
+  final String label;
+
+  const _PlanMetaChip({required this.icon, required this.label});
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    final normalized = label.replaceAll('_', ' ').trim();
+    final displayLabel = normalized.isEmpty ? normalized : '${normalized[0].toUpperCase()}${normalized.substring(1)}';
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Icon(icon, size: 13, color: scheme.onSurfaceVariant.withValues(alpha: 0.7)),
+        const SizedBox(width: 5),
+        Text(
+          displayLabel,
+          style: TextStyle(color: scheme.onSurfaceVariant.withValues(alpha: 0.8), fontSize: 11, fontWeight: FontWeight.w600),
+        ),
       ],
     );
   }

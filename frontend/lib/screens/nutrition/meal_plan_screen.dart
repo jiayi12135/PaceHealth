@@ -133,92 +133,178 @@ class _MealPlanScreenState extends State<MealPlanScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
     return Scaffold(
       appBar: AppBar(title: const Text('Meal ideas')),
+      bottomNavigationBar: SafeArea(
+        top: false,
+        child: Container(
+          padding: const EdgeInsets.fromLTRB(20, 12, 20, 14),
+          decoration: BoxDecoration(
+            color: scheme.surface,
+            border: Border(top: BorderSide(color: scheme.outlineVariant.withValues(alpha: 0.6))),
+          ),
+          child: FilledButton(
+            onPressed: _generating ? null : _generate,
+            child: _generating
+                ? const Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      SizedBox(height: 18, width: 18, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white)),
+                      SizedBox(width: 10),
+                      Text('Creating ideas…'),
+                    ],
+                  )
+                : Text(_result == null ? 'Create meal ideas' : 'Create new ideas'),
+          ),
+        ),
+      ),
       body: ListView(
-        padding: const EdgeInsets.fromLTRB(20, 12, 20, 28),
+        padding: const EdgeInsets.fromLTRB(20, 8, 20, 28),
         children: [
-          Text('Ingredients you have', style: Theme.of(context).textTheme.titleSmall),
-          const SizedBox(height: 4),
-          Text("Optional — leave empty and we'll suggest common healthy ingredients.", style: TextStyle(color: Colors.grey.shade600, fontSize: 12)),
-          const SizedBox(height: 10),
-          if (_ingredients.isNotEmpty) ...[
-            Wrap(
-              spacing: 8,
-              runSpacing: 8,
-              children: [for (final ing in _ingredients) Chip(label: Text(ing), onDeleted: () => setState(() => _ingredients.remove(ing)))],
-            ),
-            const SizedBox(height: 10),
-          ],
-          Row(
-            children: [
-              Expanded(
-                child: TextField(
-                  controller: _ingredientController,
-                  decoration: const InputDecoration(hintText: 'e.g. chicken breast'),
-                  onSubmitted: (_) => _addIngredient(),
-                ),
+          Card(
+            color: scheme.primaryContainer.withValues(alpha: 0.65),
+            child: Padding(
+              padding: const EdgeInsets.all(18),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text('What can we make?', style: Theme.of(context).textTheme.titleLarge),
+                  const SizedBox(height: 5),
+                  Text(
+                    'Add what is in your kitchen and any dietary needs. We’ll turn them into practical recipe ideas.',
+                    style: Theme.of(context).textTheme.bodySmall?.copyWith(color: scheme.onSurfaceVariant, height: 1.4),
+                  ),
+                ],
               ),
-              const SizedBox(width: 8),
-              IconButton.filled(onPressed: _addIngredient, icon: const Icon(Icons.add)),
-            ],
-          ),
-          const SizedBox(height: 8),
-          OutlinedButton.icon(
-            onPressed: _scanning ? null : _openScanSheet,
-            icon: _scanning
-                ? const SizedBox(height: 16, width: 16, child: CircularProgressIndicator(strokeWidth: 2))
-                : const Icon(Icons.camera_alt_outlined),
-            label: Text(_scanning ? 'Scanning…' : 'Scan ingredients instead'),
-          ),
-          const SizedBox(height: 24),
-          Text('Dietary restrictions', style: Theme.of(context).textTheme.titleSmall),
-          const SizedBox(height: 10),
-          if (_restrictions.isNotEmpty) ...[
-            Wrap(
-              spacing: 8,
-              runSpacing: 8,
-              children: [for (final r in _restrictions) Chip(label: Text(r), onDeleted: () => setState(() => _restrictions.remove(r)))],
             ),
-            const SizedBox(height: 10),
-          ],
-          Row(
-            children: [
-              Expanded(
-                child: TextField(
-                  controller: _restrictionController,
-                  decoration: const InputDecoration(hintText: 'e.g. vegetarian, no shellfish'),
-                  onSubmitted: (_) => _addRestriction(),
-                ),
+          ),
+          const SizedBox(height: 14),
+          Card(
+            child: Padding(
+              padding: const EdgeInsets.all(16),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const _MealInputHeader(
+                    title: 'Ingredients you have',
+                    subtitle: 'Leave empty if you want ideas using common ingredients.',
+                  ),
+                  if (_ingredients.isNotEmpty) ...[
+                    const SizedBox(height: 14),
+                    Wrap(
+                      spacing: 8,
+                      runSpacing: 8,
+                      children: [for (final ing in _ingredients) Chip(label: Text(ing), onDeleted: () => setState(() => _ingredients.remove(ing)))],
+                    ),
+                  ],
+                  const SizedBox(height: 14),
+                  Row(
+                    children: [
+                      Expanded(
+                        child: TextField(
+                          controller: _ingredientController,
+                          textInputAction: TextInputAction.done,
+                          decoration: const InputDecoration(hintText: 'Add an ingredient'),
+                          onSubmitted: (_) => _addIngredient(),
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                      IconButton.filledTonal(
+                        onPressed: _addIngredient,
+                        tooltip: 'Add ingredient',
+                        icon: const Icon(Icons.add_rounded),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 10),
+                  SizedBox(
+                    width: double.infinity,
+                    child: OutlinedButton.icon(
+                      onPressed: _scanning ? null : _openScanSheet,
+                      icon: _scanning
+                          ? const SizedBox(height: 16, width: 16, child: CircularProgressIndicator(strokeWidth: 2))
+                          : const Icon(Icons.camera_alt_outlined),
+                      label: Text(_scanning ? 'Scanning ingredients…' : 'Scan ingredients from a photo'),
+                    ),
+                  ),
+                ],
               ),
-              const SizedBox(width: 8),
-              IconButton.filled(onPressed: _addRestriction, icon: const Icon(Icons.add)),
-            ],
+            ),
           ),
-          const SizedBox(height: 12),
-          SwitchListTile(
-            contentPadding: EdgeInsets.zero,
-            title: const Text('Adjust for my recent progress'),
-            subtitle: Text("Uses this week's weight trend to fine-tune calories", style: TextStyle(fontSize: 12, color: Colors.grey.shade600)),
-            value: _includeProgress,
-            onChanged: (v) => setState(() => _includeProgress = v),
+          const SizedBox(height: 14),
+          Card(
+            child: Padding(
+              padding: const EdgeInsets.all(16),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const _MealInputHeader(
+                    title: 'Dietary preferences',
+                    subtitle: 'Add allergies, restrictions, or eating preferences.',
+                  ),
+                  if (_restrictions.isNotEmpty) ...[
+                    const SizedBox(height: 14),
+                    Wrap(
+                      spacing: 8,
+                      runSpacing: 8,
+                      children: [for (final restriction in _restrictions) Chip(label: Text(restriction), onDeleted: () => setState(() => _restrictions.remove(restriction)))],
+                    ),
+                  ],
+                  const SizedBox(height: 14),
+                  Row(
+                    children: [
+                      Expanded(
+                        child: TextField(
+                          controller: _restrictionController,
+                          textInputAction: TextInputAction.done,
+                          decoration: const InputDecoration(hintText: 'e.g. vegetarian, no shellfish'),
+                          onSubmitted: (_) => _addRestriction(),
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                      IconButton.filledTonal(
+                        onPressed: _addRestriction,
+                        tooltip: 'Add preference',
+                        icon: const Icon(Icons.add_rounded),
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+            ),
           ),
-          const SizedBox(height: 12),
-          SizedBox(
-            width: double.infinity,
-            child: FilledButton.icon(
-              onPressed: _generating ? null : _generate,
-              icon: _generating
-                  ? const SizedBox(height: 18, width: 18, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
-                  : const Icon(Icons.auto_awesome),
-              label: Text(_generating ? 'Thinking…' : (_result == null ? 'Get meal ideas' : 'Get new ideas')),
+          const SizedBox(height: 14),
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
+            child: Row(
+              children: [
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text('Use recent progress', style: Theme.of(context).textTheme.bodyMedium?.copyWith(fontWeight: FontWeight.w700)),
+                      const SizedBox(height: 2),
+                      Text(
+                        'Fine-tune suggestions using your weight trend.',
+                        style: Theme.of(context).textTheme.bodySmall?.copyWith(color: scheme.onSurfaceVariant),
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(width: 12),
+                Switch(
+                  value: _includeProgress,
+                  onChanged: (value) => setState(() => _includeProgress = value),
+                ),
+              ],
             ),
           ),
           if (_error != null) ...[
-            const SizedBox(height: 12),
+            const SizedBox(height: 14),
             Container(
               padding: const EdgeInsets.all(12),
-              decoration: BoxDecoration(color: Colors.orange.shade50, borderRadius: BorderRadius.circular(8)),
+              decoration: BoxDecoration(color: Colors.orange.shade50, borderRadius: BorderRadius.circular(14)),
               child: Row(children: [const Icon(Icons.info_outline, color: Colors.orange), const SizedBox(width: 8), Expanded(child: Text(_error!))]),
             ),
           ],
@@ -228,6 +314,38 @@ class _MealPlanScreenState extends State<MealPlanScreen> {
           ],
         ],
       ),
+    );
+  }
+}
+
+class _MealInputHeader extends StatelessWidget {
+  final String title;
+  final String subtitle;
+
+  const _MealInputHeader({required this.title, required this.subtitle});
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(title, style: Theme.of(context).textTheme.titleSmall),
+              const SizedBox(height: 3),
+              Text(subtitle, style: Theme.of(context).textTheme.bodySmall?.copyWith(color: scheme.onSurfaceVariant, height: 1.3)),
+            ],
+          ),
+        ),
+        Container(
+          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+          decoration: BoxDecoration(color: scheme.surfaceContainerHighest, borderRadius: BorderRadius.circular(12)),
+          child: const Text('Optional', style: TextStyle(fontSize: 10, fontWeight: FontWeight.w700)),
+        ),
+      ],
     );
   }
 }
@@ -285,7 +403,7 @@ class _RecipeCard extends StatelessWidget {
                 children: [
                   Container(
                     padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-                    decoration: BoxDecoration(color: Theme.of(context).colorScheme.secondary.withOpacity(0.15), borderRadius: BorderRadius.circular(10)),
+                    decoration: BoxDecoration(color: Theme.of(context).colorScheme.secondary.withValues(alpha: 0.15), borderRadius: BorderRadius.circular(10)),
                     child: Text(recipe.mealType, style: TextStyle(fontSize: 11, fontWeight: FontWeight.w700, color: Theme.of(context).colorScheme.secondary)),
                   ),
                   const Spacer(),

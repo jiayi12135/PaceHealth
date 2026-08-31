@@ -31,22 +31,21 @@ class WorkoutService:
         self.client = client
 
     def create(self, user_id: str, payload: WorkoutCompletionCreate) -> WorkoutCompletionResponse:
-        result = (
-            self.client.table("workout_completions")
-            .insert(
-                {
-                    "user_id": user_id,
-                    "plan_id": str(payload.plan_id),
-                    "day": payload.day,
-                    "status": payload.status,
-                    "reason": payload.reason,
-                    "duration_seconds": payload.duration_seconds,
-                    "exercise_log": [entry.model_dump(by_alias=False) for entry in payload.exercise_log] if payload.exercise_log else None,
-                    "feedback": payload.feedback.model_dump(by_alias=False) if payload.feedback else None,
-                }
-            )
-            .execute()
-        )
+        row: dict[str, Any] = {
+            "user_id": user_id,
+            "plan_id": str(payload.plan_id),
+            "day": payload.day,
+            "status": payload.status,
+            "reason": payload.reason,
+            "duration_seconds": payload.duration_seconds,
+            "exercise_log": [entry.model_dump(by_alias=False) for entry in payload.exercise_log] if payload.exercise_log else None,
+            "feedback": payload.feedback.model_dump(by_alias=False) if payload.feedback else None,
+        }
+        # 只有client的自动补记(auto-backfill missed day)会带这个,让记录落在真正
+        # 错过的那天而不是"现在";正常app内完成/跳过不传,交给DB默认值(now())。
+        if payload.completed_at is not None:
+            row["completed_at"] = payload.completed_at.isoformat()
+        result = self.client.table("workout_completions").insert(row).execute()
         return _to_response(result.data[0])
 
     def list_recent(self, user_id: str, days: int = 14) -> list[WorkoutCompletionResponse]:

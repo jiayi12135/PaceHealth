@@ -312,23 +312,35 @@ def build_chat_system_context(
 
 # ---------- 周报/月报功能的 prompt ----------
 
-REPORT_SYSTEM_PROMPT = """你是PaceHealth App里的健身助手AI,负责根据已经算好的体重数据,写一段周报/月报的总结文字。
+REPORT_SYSTEM_PROMPT = """你是PaceHealth App里的健身助手AI,负责根据已经算好的体重数据(以及最近真实的训练完成/跳过记录,如果有给你的话),写一段周报/月报的总结文字。
 
 核心原则:
 1. 下面给你的所有数字(体重变化、目标进度百分比、预计还需几周)都已经用代码精确计算过,你只需要读懂这些数字、用自然语言解释清楚,绝对不能自己重新计算或编造任何数字,不能修改、四舍五入方式也不要改变,直接引用给你的数字。
 2. 语气要鼓励、正向,但要诚实——如果这段时间体重变化不理想(比如目标减重但体重反而上升),不要回避这个事实,而是给出合理的解释角度(比如体重正常波动、肌肉增加、水分变化)和继续坚持的鼓励,不要说谎或掩盖数据。
 3. 如果"预计还需几周达到目标"这个数字是缺失的(null),代表当前趋势没有朝目标前进,要委婉地指出这一点,并建议用户可以去聊天框聊聊要不要调整计划。
-4. 长度控制在3-5句话,像一段简短的报告点评,不要写成长文章。
-5. 不要给出具体的医疗或饮食处方建议,你不是营养师或医生。
+4. 如果给了【最近训练完成情况】,要结合里面写的真实跳过原因,具体分析用户最近训练没能坚持下来的原因——比如某个理由反复出现(总是"没时间"、总是同一个动作因为疼痛被跳过)、或者是被系统自动标成"没有响应"(代表用户压根没打开app处理那天)。只能引用/归纳记录里真实写的原因,不能自己编造用户没写过的心理动机或猜测感受。分析完给一两句具体、有建设性的建议(比如反复因为没时间跳过,可以建议换个更短的时段)。如果完成率本来就很高、没什么好分析的,就正面肯定一下,不用硬找问题。
+5. 长度控制在3-6句话,像一段简短的报告点评,不要写成长文章。
+6. 不要给出具体的医疗或饮食处方建议,你不是营养师或医生。
 """ + NO_MARKDOWN_INSTRUCTION + ENGLISH_OUTPUT_INSTRUCTION
 
 
-def build_report_user_message(stats: ReportStats, profile: Profile, period_type: str) -> str:
+def build_report_user_message(stats: ReportStats, profile: Profile, period_type: str, adherence_note: str | None = None) -> str:
     period_label = "本周" if period_type == "weekly" else "本月"
+    adherence_section = (
+        f"\n\n【最近训练完成情况 - 真实记录,不要编造,只能引用/归纳里面写的原因】\n{adherence_note}\n"
+        if adherence_note
+        else ""
+    )
+    adherence_ask = (
+        "，并结合上面训练完成情况里真实写的跳过原因，具体分析最近训练没能坚持下来的原因，给一两句有建设性的建议"
+        if adherence_note
+        else ""
+    )
 
     if not stats.has_enough_data:
         return f"""这位用户这个周期({period_label})记录的体重数据不足两条,没办法算出变化趋势。
-请写一段简短的话,鼓励用户坚持记录体重(建议每周至少记录一次),这样才能看到自己的进度。不要编造任何体重数字。"""
+请写一段简短的话,鼓励用户坚持记录体重(建议每周至少记录一次),这样才能看到自己的进度。不要编造任何体重数字。{adherence_section}
+{"体重数据虽然不够,但上面如果有训练完成记录,请顺便结合真实的跳过原因简单点评一下最近训练完成的情况,给一两句具体、有建设性的建议;没有训练记录就不用提这部分。" if adherence_note else ""}"""
 
     return f"""请根据以下已经算好的数据,为用户写一段{period_label}体重报告总结。
 
@@ -343,8 +355,8 @@ def build_report_user_message(stats: ReportStats, profile: Profile, period_type:
 {period_label}体重变化: {stats.delta_kg} kg (负数表示变轻,正数表示变重)
 朝目标前进的进度: {stats.progress_to_goal_percent}%
 按当前速度预计还需要: {f"{stats.projected_weeks_to_goal} 周达到目标" if stats.projected_weeks_to_goal is not None else "无法预测(当前趋势没有朝目标前进)"}
-
-请写一段总结文字。
+{adherence_section}
+请写一段总结文字{adherence_ask}。
 """
 
 

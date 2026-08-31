@@ -275,6 +275,7 @@ def report(
     profiles: Annotated[ProfileService, Depends(get_profile_service)],
     weights: Annotated[WeightService, Depends(get_weight_service)],
     reports: Annotated[ReportService, Depends(get_report_service)],
+    workouts: Annotated[WorkoutService, Depends(get_workout_service)],
 ) -> ReportResponse:
     profile = _require_profile(profiles, user.user_id)
 
@@ -285,8 +286,13 @@ def report(
     except PostgrestAPIError as exc:
         raise APIError(502, "Unable to load weight records.", "WEIGHT_READ_FAILED") from exc
 
+    # 跟这份报告的周期对齐(周报看7天/月报看30天),这样AI点评的"最近训练情况"
+    # 和上面体重趋势看的是同一个时间窗口,不会一个说本周一个说上个月。
+    period_days = 7 if payload.period_type == "weekly" else 30
+    adherence_note = _build_adherence_note(workouts, user.user_id, days=period_days)
+
     try:
-        summary = generate_report_summary(stats, to_ai_profile(profile.profile), payload.period_type)
+        summary = generate_report_summary(stats, to_ai_profile(profile.profile), payload.period_type, adherence_note)
     except APIError:
         raise
     except Exception as exc:

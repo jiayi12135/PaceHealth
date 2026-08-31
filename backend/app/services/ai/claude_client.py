@@ -420,13 +420,15 @@ def generate_meal_plan(
     raise RuntimeError("Claude 没有返回预期的 tool_use 结果,请检查prompt或API返回内容")
 
 
-def generate_report_summary(stats: ReportStats, profile: Profile, period_type: str) -> str:
+def generate_report_summary(stats: ReportStats, profile: Profile, period_type: str, adherence_note: str | None = None) -> str:
     """调用 Claude API,根据已经算好的体重数据(stats)生成一段总结文字。
     注意: 所有数字都是 report_calculator.py 算好的,这里只是让AI把数字"翻译"成人话,
     AI不会、也不应该自己重新计算任何数字。
+    adherence_note 是最近训练完成/跳过记录拼成的摘要(见routers/ai.py的_build_adherence_note),
+    可选——给了的话AI会顺便结合真实的跳过原因分析一下最近训练没坚持的原因。
     """
 
-    user_message = build_report_user_message(stats, profile, period_type)
+    user_message = build_report_user_message(stats, profile, period_type, adherence_note)
 
     response = _get_client().messages.create(
         model=MODEL_NAME,

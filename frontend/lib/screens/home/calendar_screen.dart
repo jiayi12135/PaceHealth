@@ -58,6 +58,10 @@ class _CalendarScreenState extends State<CalendarScreen> {
   }
 
   Future<void> _maybeStartNewRound() async {
+    // 先把排定了但既没完成也没按Incomplete的过去日期自动补记成skipped,这样日历上
+    // 那几天会直接显示成灰点(跟按了Incomplete一样),不用等用户回头手动点。
+    await autoMarkMissedDays(widget.store);
+    _loadRecent();
     final started = await maybeStartNewRound(widget.store);
     if (started && mounted) {
       // 这个页面直接读widget.store.plan/workoutDayAssignments,不是靠AnimatedBuilder

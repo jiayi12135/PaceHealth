@@ -54,6 +54,62 @@ Map<String, String> autoAssignWorkoutDays({
   return assignments;
 }
 
+/// 排定了要练的那天,过去了,却既没点完成、也没按Incomplete——就自动补一条skipped
+/// 记录,落在真正错过的那个日期上(不是"现在"),原因写"没有响应"。这样Report的
+/// 历史/完成率、AI的adherence note、还有maybeStartNewRound的"这周收工了没"判断,
+/// 都不会因为用户单纯没理会某一天就一直看不到那天、或者卡住不往下走。
+/// 只回填到昨天为止(今天还没过完不算),最多回看60天,避免plan开了很久之后
+/// 突然一次性灌一堆历史记录。应该在maybeStartNewRound之前调用。
+Future<void> autoMarkMissedDays(ProfileStore store) async {
+  final plan = store.plan;
+  if (plan == null) return;
+  final planId = plan.planId;
+  if (planId == null) return;
+  final weekdayToPlanDay = <String, String>{
+    for (final entry in store.workoutDayAssignments.entries) entry.value: entry.key,
+  };
+  if (weekdayToPlanDay.isEmpty) return;
+
+  final now = DateTime.now();
+  final today = DateTime(now.year, now.month, now.day);
+  final createdDate = DateTime(plan.createdAt.year, plan.createdAt.month, plan.createdAt.day);
+  final earliestAllowed = today.subtract(const Duration(days: 60));
+  final start = createdDate.isBefore(earliestAllowed) ? earliestAllowed : createdDate;
+  final yesterday = today.subtract(const Duration(days: 1));
+  if (start.isAfter(yesterday)) return; // plan今天才建的,还没有"已经过去"的排定日
+
+  final api = ApiService();
+  List<WorkoutCompletion> recent;
+  try {
+    recent = await api.fetchRecentWorkouts(days: (today.difference(start).inDays + 2).clamp(1, 365), accessToken: store.accessToken);
+  } catch (_) {
+    return;
+  }
+  // 不分plan/day label,只要那个日期上有任何记录就算"已经处理过了"——跟Calendar
+  // 判断"这天有没有记录"用的是同一套逻辑(按日期,不是按plan轮次)。
+  final recordedDates = recent.map((w) {
+    final d = w.completedAt.toLocal();
+    return DateTime(d.year, d.month, d.day);
+  }).toSet();
+
+  for (var date = start; !date.isAfter(yesterday); date = date.add(const Duration(days: 1))) {
+    final planDay = weekdayToPlanDay[kWeekdays[date.weekday - 1]];
+    if (planDay == null || recordedDates.contains(date)) continue;
+    try {
+      await api.recordWorkout(
+        planId: planId,
+        day: planDay,
+        status: 'skipped',
+        reason: 'No response — automatically marked incomplete',
+        accessToken: store.accessToken,
+        completedAt: DateTime(date.year, date.month, date.day, 12), // 用中午,避免时区换算跨到别的日期
+      );
+    } catch (_) {
+      // 单条补记失败不影响别的日期继续补
+    }
+  }
+}
+
 /// 检查这一周排定的训练日是不是全都已经有记录了(完成或跳过)——如果是,而且这周
 /// 还没自动生成过新一轮,就调用/ai/generate-plan生成新一轮计划(backend会自动带上
 /// 上一轮的完成情况给AI参考,见后端generate-plan的adherence_note),更新store并

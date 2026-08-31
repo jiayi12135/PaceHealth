@@ -66,6 +66,10 @@ class _PlanScreenState extends State<PlanScreen> {
   }
 
   Future<void> _maybeStartNewRound() async {
+    // 先把排定了但既没完成也没按Incomplete的过去日期自动补记成skipped,这样才不会
+    // 因为用户单纯没理会某一天,这一周就永远查不到"收工了没"。
+    await autoMarkMissedDays(widget.store);
+    _loadRecent(); // 补记可能给"这周"或更早添了新的skipped记录,刷新一下让它们显示出来
     final started = await maybeStartNewRound(widget.store);
     if (started && mounted) {
       // 这个页面直接读widget.store.plan,不是靠AnimatedBuilder监听store变化的——

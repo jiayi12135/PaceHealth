@@ -192,6 +192,9 @@ class ApiService {
     List<Map<String, dynamic>>? exerciseLog,
     Map<String, dynamic>? feedback,
     String? accessToken,
+    // 只有自动补记"排定了但没做也没按incomplete"的那天才会传——让记录落在真正
+    // 错过的那个日期,而不是"现在"。正常app内完成/跳过不传这个,由后端自己填当前时间。
+    DateTime? completedAt,
   }) async {
     if (ApiConfig.useMockData) return;
 
@@ -209,6 +212,7 @@ class ApiService {
         if (durationSeconds != null) 'durationSeconds': durationSeconds,
         if (exerciseLog != null) 'exerciseLog': exerciseLog,
         if (feedback != null) 'feedback': feedback,
+        if (completedAt != null) 'completedAt': completedAt.toUtc().toIso8601String(),
       }),
     );
     if (response.statusCode != 201 && response.statusCode != 200) {

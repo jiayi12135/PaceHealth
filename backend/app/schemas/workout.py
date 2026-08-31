@@ -44,6 +44,11 @@ class WorkoutCompletionCreate(APIModel):
     # the day-level fields keep working unchanged.
     exercise_log: list[ExerciseLogEntry] | None = None
     feedback: WorkoutFeedback | None = None
+    # Only set by the client's auto-backfill (a scheduled day went by with no completion
+    # and no explicit skip) so the record lands on the day it was actually missed instead
+    # of "now". Normal completes/skips from the app leave this null and the DB default
+    # (now()) applies.
+    completed_at: datetime | None = None
 
 
 class WorkoutCompletionResponse(WorkoutCompletionCreate):

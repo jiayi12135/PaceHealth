@@ -235,9 +235,12 @@ class TestReport:
         weight_service = Mock()
         weight_service.list.return_value = []
         report_service = Mock()
+        workout_service = Mock()
+        workout_service.list_recent.return_value = []
         app.dependency_overrides[get_profile_service] = lambda: profile_service
         app.dependency_overrides[get_weight_service] = lambda: weight_service
         app.dependency_overrides[get_report_service] = lambda: report_service
+        app.dependency_overrides[get_workout_service] = lambda: workout_service
 
         stats = ReportStats(
             has_enough_data=True,

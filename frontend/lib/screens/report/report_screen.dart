@@ -1,3 +1,4 @@
+import 'dart:ui';
 import 'package:flutter/material.dart';
 import '../../models/models.dart';
 import '../../services/api_service.dart';
@@ -349,31 +350,106 @@ class _ReportScreenState extends State<ReportScreen> {
               ],
               if (_report!.summary.isNotEmpty) ...[
                 const SizedBox(height: 14),
-                Card(
-                  child: Padding(
-                    padding: const EdgeInsets.all(16),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Row(
-                          children: [
-                            const Icon(Icons.auto_awesome, size: 18),
-                            const SizedBox(width: 6),
-                            Text(
-                              _report!.hasEnoughData ? 'Coach Insight' : 'Coach Guidance',
-                              style: Theme.of(context).textTheme.titleSmall,
-                            ),
-                          ],
-                        ),
-                        const SizedBox(height: 8),
-                        Text(_report!.summary, style: const TextStyle(height: 1.4)),
-                      ],
+                if (_report!.hasEnoughData)
+                  Card(
+                    child: Padding(
+                      padding: const EdgeInsets.all(16),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Row(
+                            children: [
+                              const Icon(Icons.auto_awesome, size: 18),
+                              const SizedBox(width: 6),
+                              Text('Coach Insight', style: Theme.of(context).textTheme.titleSmall),
+                            ],
+                          ),
+                          const SizedBox(height: 8),
+                          Text(_report!.summary, style: const TextStyle(height: 1.4)),
+                        ],
+                      ),
                     ),
-                  ),
-                ),
+                  )
+                else
+                  _CoachGuidance(summary: _report!.summary),
               ],
             ],
           ],
+        ),
+      ),
+    );
+  }
+}
+
+class _CoachGuidance extends StatelessWidget {
+  final String summary;
+
+  const _CoachGuidance({required this.summary});
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    return Container(
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(22),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.035),
+            blurRadius: 20,
+            offset: const Offset(0, 8),
+          ),
+        ],
+      ),
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(22),
+        child: BackdropFilter(
+          filter: ImageFilter.blur(sigmaX: 14, sigmaY: 14),
+          child: Container(
+            padding: const EdgeInsets.all(16),
+            decoration: BoxDecoration(
+              gradient: LinearGradient(
+                begin: Alignment.topLeft,
+                end: Alignment.bottomRight,
+                colors: [
+                  Colors.white.withValues(alpha: 0.72),
+                  Colors.white.withValues(alpha: 0.46),
+                ],
+              ),
+              borderRadius: BorderRadius.circular(22),
+              border: Border.all(
+                color: Colors.white.withValues(alpha: 0.82),
+              ),
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  children: [
+                    Icon(
+                      Icons.auto_awesome,
+                      size: 17,
+                      color: scheme.primary.withValues(alpha: 0.78),
+                    ),
+                    const SizedBox(width: 7),
+                    Text(
+                      'Coach Guidance',
+                      style: Theme.of(context).textTheme.titleSmall?.copyWith(
+                            color: scheme.onSurface.withValues(alpha: 0.86),
+                          ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 7),
+                Text(
+                  summary,
+                  style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                        color: scheme.onSurfaceVariant.withValues(alpha: 0.82),
+                        height: 1.45,
+                      ),
+                ),
+              ],
+            ),
+          ),
         ),
       ),
     );
